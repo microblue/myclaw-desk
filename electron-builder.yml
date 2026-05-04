@@ -44,15 +44,16 @@ mac:
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
+  # Stick to AppImage for the first release — snap/deb need snapcraft/fpm
+  # tooling that isn't installed on a vanilla machine. Re-add later.
   target:
     - AppImage
-    - snap
-    - deb
-  maintainer: electronjs.org
+  maintainer: MyClaw.One
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: microblue
+  repo: myclaw-desk
