@@ -35,12 +35,18 @@ class StudioProcess extends EventEmitter {
   }
 
   stop(): void {
-    if (this.child && this.child.exitCode === null) {
-      this.child.kill('SIGTERM')
-      const c = this.child
-      setTimeout(() => {
-        if (c.exitCode === null) c.kill('SIGKILL')
-      }, 3_000)
+    const c = this.child
+    if (c) {
+      // Detach piped stdio so the parent's event loop isn't held alive by the
+      // child's pipes — without this Electron hangs on quit.
+      c.stdout?.destroy()
+      c.stderr?.destroy()
+      if (c.exitCode === null) {
+        c.kill('SIGTERM')
+        setTimeout(() => {
+          if (c.exitCode === null) c.kill('SIGKILL')
+        }, 1_500)
+      }
     }
     this.child = null
     this.update({ phase: 'stopped', url: undefined })
@@ -97,6 +103,7 @@ class StudioProcess extends EventEmitter {
         env: childEnv,
         stdio: ['ignore', 'pipe', 'pipe']
       })
+      child.unref()
       this.child = child
 
       child.once('exit', (code, signal) => {

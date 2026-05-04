@@ -1,0 +1,39 @@
+#!/usr/bin/env node
+/* eslint-disable */
+// Stand-in for the real `openclaw` CLI used in e2e tests. Implements just
+// enough of `openclaw gateway --port N` to satisfy our bootstrap state
+// machine: bind a TCP listener so isPortListening() returns true, then idle
+// until SIGTERM. Real openclaw is what ships to users; this avoids slow
+// npm installs and host dependencies in CI.
+
+const net = require('net')
+
+const args = process.argv.slice(2)
+if (args[0] !== 'gateway') {
+  console.error('[fake-openclaw] only `gateway` is implemented; got', args.join(' '))
+  process.exit(2)
+}
+
+const portIdx = args.indexOf('--port')
+const port = portIdx >= 0 ? Number(args[portIdx + 1]) : 18789
+if (!Number.isInteger(port) || port <= 0) {
+  console.error('[fake-openclaw] invalid --port', args[portIdx + 1])
+  process.exit(2)
+}
+
+const server = net.createServer((socket) => {
+  // Drain any incoming bytes so curl/handshake probes don't reset.
+  socket.on('data', () => {})
+  socket.on('error', () => {})
+})
+
+server.listen(port, '127.0.0.1', () => {
+  console.log(`[fake-openclaw] gateway listening on 127.0.0.1:${port}`)
+})
+
+const shutdown = () => {
+  server.close(() => process.exit(0))
+  setTimeout(() => process.exit(0), 1000).unref()
+}
+process.on('SIGTERM', shutdown)
+process.on('SIGINT', shutdown)

@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync, mkdirSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
+const FAKE_OPENCLAW_BIN = join(__dirname, 'fake-openclaw', 'openclaw')
+
 export interface Sandbox {
   /** Root tmp dir; cleanup deletes everything beneath this. */
   root: string
@@ -39,7 +41,11 @@ export function createSandbox(): Sandbox {
     MYCLAW_DESK_USERDATA: userData,
     OPENCLAW_STATE_DIR: openclawState,
     MYCLAW_DESK_GATEWAY_PORT: String(gatewayPort),
-    MYCLAW_DESK_DAEMON_MODE: 'managed' // never touch the host's systemd
+    MYCLAW_DESK_DAEMON_MODE: 'managed', // never touch the host's systemd
+    // Default to the fake openclaw bin so tests don't depend on host having
+    // real openclaw installed (and don't trigger our slow npm install path).
+    // Override via opts.openclawBin / direct env mutation for full-stack tests.
+    MYCLAW_DESK_OPENCLAW_BIN: FAKE_OPENCLAW_BIN
   }
 
   let cleaned = false

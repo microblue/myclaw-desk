@@ -4,7 +4,7 @@ import { BOOTSTRAP_CHANNELS, type BootstrapState } from '../../shared/bootstrap'
 
 export function registerBootstrapIpc(): void {
   ipcMain.handle(BOOTSTRAP_CHANNELS.getState, () => bootstrapper.getState())
-  ipcMain.handle(BOOTSTRAP_CHANNELS.start, () => bootstrapper.ensureInstalled())
+  ipcMain.handle(BOOTSTRAP_CHANNELS.start, () => bootstrapper.ensureReady())
 
   bootstrapper.on('state', (state: BootstrapState) => {
     for (const win of BrowserWindow.getAllWindows()) {

@@ -4,7 +4,9 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerBootstrapIpc } from './ipc/bootstrap'
 import { registerStudioIpc } from './ipc/studio'
+import { bootstrapper } from './openclaw/bootstrap'
 import { studio } from './studio/process'
+import type { BootstrapState } from '../shared/bootstrap'
 import type { StudioState } from '../shared/studio'
 
 // Sandbox override: redirect Electron's userData (and thus our paths.ts
@@ -73,9 +75,17 @@ app.whenReady().then(() => {
   createWindow()
 
   studio.on('state', swapToStudio)
-  // Kick off the studio child as soon as the app is ready. Splash UI will
-  // observe its state via IPC; URL swap happens automatically on 'ready'.
-  void studio.start()
+
+  // Two-stage launch: bootstrap (install + gateway) first, then studio. Studio
+  // depends on the gateway being reachable, so we serialize. Splash UI shows
+  // bootstrap progress until phase==='ready', then studio progress until URL
+  // swap.
+  bootstrapper.on('state', (state: BootstrapState) => {
+    if (state.phase === 'ready' && studio.getState().phase === 'idle') {
+      void studio.start()
+    }
+  })
+  void bootstrapper.ensureReady()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -84,6 +94,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   studio.stop()
+  bootstrapper.shutdown()
 })
 
 app.on('window-all-closed', () => {
