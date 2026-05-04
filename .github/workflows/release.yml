@@ -21,6 +21,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # macOS is intentionally omitted — first release ships Linux + Windows
+        # only. Re-add macos-13 (x64) and macos-14 (arm64) entries once we sort
+        # out the unsigned-package failure and decide on signing strategy.
         include:
           - os: ubuntu-latest
             target: linux-x64
@@ -28,20 +31,6 @@ jobs:
             artifact_glob: |
               dist/*.AppImage
               dist/latest-linux.yml
-          - os: macos-13
-            target: darwin-x64
-            builder_flag: mac
-            artifact_glob: |
-              dist/*.dmg
-              dist/*.zip
-              dist/latest-mac.yml
-          - os: macos-14
-            target: darwin-arm64
-            builder_flag: mac
-            artifact_glob: |
-              dist/*.dmg
-              dist/*.zip
-              dist/latest-mac.yml
           - os: windows-latest
             target: win-x64
             builder_flag: win
@@ -67,9 +56,6 @@ jobs:
       # (instead of `pnpm build:<os>`) so we can pass `--publish never` to
       # electron-builder — otherwise it'd auto-publish to GitHub on tag, which
       # would race with the `release` job below.
-      #
-      # CSC_IDENTITY_AUTO_DISCOVERY=false disables code signing on macOS — we
-      # ship unsigned for the first release.
       - name: Compile (electron-vite)
         shell: bash
         run: pnpm exec electron-vite build
@@ -81,27 +67,18 @@ jobs:
       - name: Package (electron-builder, ${{ matrix.target }})
         shell: bash
         run: pnpm exec electron-builder --${{ matrix.builder_flag }} --publish never
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       # Smoke-test the packaged binary against the fake openclaw gateway.
-      # Self-skips on Windows (the fake-openclaw shebang script needs a .cmd
-      # shim there). Linux needs a virtual display via xvfb; macOS runners
-      # have a real display so playwright can drive the BrowserWindow.
+      # Linux needs xvfb; the spec self-skips on Windows (the fake-openclaw
+      # shebang script needs a .cmd shim there).
       - name: E2E packaged binary (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: xvfb-run -a pnpm exec playwright test 03-packaged
         env:
           MYCLAW_DESK_SKIP_BUILD: '1'
 
-      - name: E2E packaged binary (macOS)
-        if: startsWith(matrix.os, 'macos-')
-        run: pnpm exec playwright test 03-packaged
-        env:
-          MYCLAW_DESK_SKIP_BUILD: '1'
-
       - name: Upload Playwright report on failure
-        if: failure() && matrix.os != 'windows-latest'
+        if: failure() && matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-${{ matrix.target }}
