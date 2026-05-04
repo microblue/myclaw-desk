@@ -77,14 +77,24 @@ class StudioProcess extends EventEmitter {
         }
       }
 
+      const childEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        PORT: String(port),
+        HOSTNAME: '127.0.0.1',
+        NODE_ENV: hasProdBuild ? 'production' : 'development'
+      }
+      // Sandbox: when a test sets MYCLAW_DESK_GATEWAY_PORT, point Studio at
+      // that gateway instead of the default 18789. OPENCLAW_STATE_DIR is
+      // already inherited from process.env above and is what isolates Studio's
+      // settings.json + runtime.db onto the sandbox path.
+      const sandboxPort = process.env.MYCLAW_DESK_GATEWAY_PORT
+      if (sandboxPort && !process.env.NEXT_PUBLIC_GATEWAY_URL) {
+        childEnv.NEXT_PUBLIC_GATEWAY_URL = `ws://127.0.0.1:${sandboxPort}`
+      }
+
       const child = spawn(node, args, {
         cwd: studioDir,
-        env: {
-          ...process.env,
-          PORT: String(port),
-          HOSTNAME: '127.0.0.1',
-          NODE_ENV: hasProdBuild ? 'production' : 'development'
-        },
+        env: childEnv,
         stdio: ['ignore', 'pipe', 'pipe']
       })
       this.child = child

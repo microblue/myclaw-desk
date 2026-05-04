@@ -18,7 +18,7 @@ export function SplashView({ studio, onRetry }: Props): React.JSX.Element {
   return (
     <div className="hero min-h-full bg-base-200">
       <div className="hero-content w-full max-w-xl flex-col text-center">
-        <h1 className="text-4xl font-bold">myclaw-desk</h1>
+        <h1 className="text-4xl font-bold">MyClaw.One Desktop</h1>
         <p className="text-base-content/70">{headline}</p>
 
         {studio.phase === 'starting' || studio.phase === 'ready' ? (

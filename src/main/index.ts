@@ -7,6 +7,13 @@ import { registerStudioIpc } from './ipc/studio'
 import { studio } from './studio/process'
 import type { StudioState } from '../shared/studio'
 
+// Sandbox override: redirect Electron's userData (and thus our paths.ts
+// derivatives) into a tmp dir so e2e tests never touch the user's real config.
+// Must run before app.whenReady() — setPath has no effect after paths cache.
+if (process.env.MYCLAW_DESK_USERDATA) {
+  app.setPath('userData', process.env.MYCLAW_DESK_USERDATA)
+}
+
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
