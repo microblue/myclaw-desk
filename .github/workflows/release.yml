@@ -84,6 +84,32 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
+      # Smoke-test the packaged binary against the fake openclaw gateway.
+      # Self-skips on Windows (the fake-openclaw shebang script needs a .cmd
+      # shim there). Linux needs a virtual display via xvfb; macOS runners
+      # have a real display so playwright can drive the BrowserWindow.
+      - name: E2E packaged binary (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a pnpm exec playwright test 03-packaged
+        env:
+          MYCLAW_DESK_SKIP_BUILD: '1'
+
+      - name: E2E packaged binary (macOS)
+        if: startsWith(matrix.os, 'macos-')
+        run: pnpm exec playwright test 03-packaged
+        env:
+          MYCLAW_DESK_SKIP_BUILD: '1'
+
+      - name: Upload Playwright report on failure
+        if: failure() && matrix.os != 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.target }}
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
