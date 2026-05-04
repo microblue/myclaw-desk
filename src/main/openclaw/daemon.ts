@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process'
 import * as net from 'net'
+import type { OpenclawCommand } from './paths'
 
 const READY_TIMEOUT_MS = 30_000
 const READY_POLL_INTERVAL_MS = 250
@@ -35,8 +36,8 @@ export interface ManagedGatewayHandle {
 }
 
 export interface StartManagedGatewayOptions {
-  /** openclaw CLI binary path. */
-  openclawBin: string
+  /** Resolved openclaw spawn command (from paths.ts). */
+  openclaw: OpenclawCommand
   /** Port to listen on. */
   port: number
   /** OPENCLAW_STATE_DIR override (test sandbox). */
@@ -52,10 +53,14 @@ export interface StartManagedGatewayOptions {
 export async function startManagedGateway(
   opts: StartManagedGatewayOptions
 ): Promise<ManagedGatewayHandle> {
-  const child = spawn(opts.openclawBin, ['gateway', '--port', String(opts.port)], {
-    env: { ...process.env, OPENCLAW_STATE_DIR: opts.stateDir },
-    stdio: ['ignore', 'pipe', 'pipe']
-  })
+  const child = spawn(
+    opts.openclaw.cmd,
+    [...opts.openclaw.prefixArgs, 'gateway', '--port', String(opts.port)],
+    {
+      env: { ...process.env, OPENCLAW_STATE_DIR: opts.stateDir },
+      stdio: ['ignore', 'pipe', 'pipe']
+    }
+  )
   // Detach from parent's reference count: Electron's main owns lifecycle via
   // app.quit(); we don't want pipes/exit listeners on the child keeping the
   // event loop alive when the user closes the window.

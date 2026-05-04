@@ -1,7 +1,24 @@
 import { app } from 'electron'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+
+export interface OpenclawCommand {
+  /**
+   * Executable to spawn. For an env override (tests) this is the override
+   * binary itself. In prod this is the bundled `node` binary, and
+   * `prefixArgs` carries the absolute path to openclaw's JS entry.
+   *
+   * Why not `runtime/node_modules/.bin/openclaw(.cmd)`? Node's spawn() on
+   * Windows can't run `.cmd` shims without `shell: true` — bypassing the
+   * shim and calling node + JS file directly works on every platform with
+   * identical kill/signal semantics.
+   */
+  cmd: string
+  prefixArgs: string[]
+  /** File whose existence proves openclaw is installed. */
+  existsAt: string
+}
 
 export interface OpenclawPaths {
   /** Root we manage on the user's machine, under userData. */
@@ -12,8 +29,8 @@ export interface OpenclawPaths {
   nodeBin: string
   /** Path to the bundled npm-cli.js (or empty string in dev → use system npm). */
   npmCli: string
-  /** Resolved openclaw CLI: env override → installed runtime → empty. */
-  openclawBin: string
+  /** How to spawn the openclaw CLI cross-platform. */
+  openclaw: OpenclawCommand
   /** Marker file written after a successful install. */
   installMarker: string
   /** TCP port the gateway should listen on. */
@@ -84,14 +101,39 @@ function resolveStateDir(): string {
   return join(app.getPath('home'), '.openclaw')
 }
 
-function resolveOpenclawBin(runtime: string): string {
-  // Test/dev override — point at any existing openclaw CLI on the host. Lets
-  // e2e tests skip the slow npm install step and use a pre-installed copy.
-  if (process.env.MYCLAW_DESK_OPENCLAW_BIN) {
-    return process.env.MYCLAW_DESK_OPENCLAW_BIN
+function resolveOpenclawCommand(runtime: string, nodeBin: string): OpenclawCommand {
+  // Test/dev override — point at any existing openclaw CLI on the host (the
+  // e2e fake-openclaw is a Node shebang script). Spawn it directly; tests
+  // run on Linux/macOS where shebangs work, and the Windows packaged spec
+  // self-skips.
+  const env = process.env.MYCLAW_DESK_OPENCLAW_BIN
+  if (env) return { cmd: env, prefixArgs: [], existsAt: env }
+
+  // Read openclaw's package.json to find its JS bin entry. Spawning
+  // `node <jsPath>` instead of going through `node_modules/.bin/openclaw(.cmd)`
+  // avoids the Windows .cmd-shim ENOENT trap and works identically on all
+  // platforms. Falls back to the unix shim path if package.json isn't there
+  // yet (pre-install) — that way `existsSync(existsAt)` still gates the
+  // install step correctly.
+  const pkgPath = join(runtime, 'node_modules', 'openclaw', 'package.json')
+  let jsRel: string | null = null
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+      if (typeof pkg.bin === 'string') jsRel = pkg.bin
+      else if (pkg.bin && typeof pkg.bin.openclaw === 'string') jsRel = pkg.bin.openclaw
+    } catch {
+      // ignore — fall back to shim path
+    }
   }
-  // Standard layout after `npm install --prefix runtime openclaw`.
-  return join(runtime, 'node_modules', '.bin', isWin ? 'openclaw.cmd' : 'openclaw')
+  if (jsRel) {
+    const jsAbs = join(runtime, 'node_modules', 'openclaw', jsRel)
+    return { cmd: nodeBin, prefixArgs: [jsAbs], existsAt: jsAbs }
+  }
+  // Pre-install or malformed package.json: target the shim so the existsSync
+  // check correctly reports "not installed yet" and bootstrap runs npm install.
+  const shim = join(runtime, 'node_modules', '.bin', isWin ? 'openclaw.cmd' : 'openclaw')
+  return { cmd: nodeBin, prefixArgs: [], existsAt: shim }
 }
 
 let cached: OpenclawPaths | null = null
@@ -108,7 +150,7 @@ export function getPaths(): OpenclawPaths {
     runtime,
     nodeBin: node,
     npmCli: npm,
-    openclawBin: resolveOpenclawBin(runtime),
+    openclaw: resolveOpenclawCommand(runtime, node),
     installMarker: join(runtime, '.installed'),
     gatewayPort,
     gatewayUrl: `ws://127.0.0.1:${gatewayPort}`,

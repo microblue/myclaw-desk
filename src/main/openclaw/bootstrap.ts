@@ -91,9 +91,9 @@ class Bootstrapper extends EventEmitter {
         await writeFile(paths.installMarker, new Date().toISOString(), 'utf8')
       }
 
-      if (!existsSync(paths.openclawBin)) {
+      if (!existsSync(paths.openclaw.existsAt)) {
         throw new Error(
-          `OpenClaw CLI not found at ${paths.openclawBin}. Set MYCLAW_DESK_OPENCLAW_BIN or rerun install.`
+          `OpenClaw CLI not found at ${paths.openclaw.existsAt}. Set MYCLAW_DESK_OPENCLAW_BIN or rerun install.`
         )
       }
 
@@ -104,7 +104,7 @@ class Bootstrapper extends EventEmitter {
         message: 'Starting OpenClaw gateway…'
       })
       this.managedGateway = await startManagedGateway({
-        openclawBin: paths.openclawBin,
+        openclaw: paths.openclaw,
         port: paths.gatewayPort,
         stateDir: paths.stateDir,
         onLog: (line) => this.update({ logTail: line })
