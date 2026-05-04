@@ -9,6 +9,21 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!studio/**'
+  - '!dist-studio/**'
+  - '!resources/node/**'
+  - '!tests/**'
+  - '!playwright.config.ts'
+extraResources:
+  # Bundled Node 24 runtime. ${platform}/${arch} expand per-target build, so
+  # a Linux package only ships linux-x64, etc. Populate via:
+  #   node scripts/download-node.mjs
+  - from: resources/node/${platform}-${arch}/
+    to: node/${platform}-${arch}/
+  # Embedded Studio (production tree, deps pruned). Populate via:
+  #   node scripts/build-studio.mjs
+  - from: dist-studio/
+    to: studio/
 asarUnpack:
   - resources/**
 win:

@@ -26,8 +26,25 @@ export interface OpenclawPaths {
 
 const isWin = process.platform === 'win32'
 
+function hostTarget(): string {
+  const platform = isWin ? 'win' : process.platform
+  return `${platform}-${process.arch}`
+}
+
+/**
+ * Where the bundled Node 24 runtime lives. Two layouts, same shape:
+ *   dev:  <repo>/resources/node/<platform>-<arch>/{bin/node,lib/node_modules/npm/...}
+ *   prod: <process.resourcesPath>/node/<platform>-<arch>/{bin/node,...}
+ *
+ * The latter comes from electron-builder's extraResources (see
+ * electron-builder.yml). Run `node scripts/download-node.mjs` to populate
+ * the dev location.
+ */
 function bundledNodeRoot(): string {
-  return join(process.resourcesPath, 'node')
+  if (is.dev) {
+    return join(__dirname, '..', '..', 'resources', 'node', hostTarget())
+  }
+  return join(process.resourcesPath, 'node', hostTarget())
 }
 
 function resolveBundledNode(): { node: string; npm: string } | null {

@@ -10,9 +10,12 @@ const READY_TIMEOUT_MS = 60_000
 
 function resolveStudioDir(): string {
   if (process.env.MYCLAW_DESK_STUDIO_DIR) return process.env.MYCLAW_DESK_STUDIO_DIR
-  // electron-vite emits main to <root>/out/main/index.js, so studio/ is two
-  // levels up from this file at runtime in both dev and packaged builds (until
-  // we switch packaged builds to extraResources, which is a later concern).
+  // Dev: studio/ is at the repo root, two levels up from out/main/index.js.
+  // Prod: electron-builder unpacks `dist-studio/` to <resourcesPath>/studio/.
+  // We can't import { is } here without circulars; check process.resourcesPath
+  // and prefer it if it actually contains studio (i.e., we're packaged).
+  const packaged = join(process.resourcesPath, 'studio')
+  if (existsSync(join(packaged, 'server', 'index.js'))) return packaged
   return join(__dirname, '..', '..', 'studio')
 }
 

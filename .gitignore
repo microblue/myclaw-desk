@@ -6,3 +6,9 @@ out
 *.log*
 test-results/
 playwright-report/
+
+# Bundled Node runtime (~200MB per platform). Populate via:
+#   node scripts/download-node.mjs
+resources/node/
+# Pruned studio production tree, populated by scripts/build-studio.mjs
+dist-studio/
