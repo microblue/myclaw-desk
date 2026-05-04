@@ -6,7 +6,10 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out'] },
+  // `studio/` is a vendored Next.js app with its own prettier/eslint conventions
+  // (single quotes, no semicolons) — it has its own `next lint`. `dist-studio/`
+  // is the staged production tree we ship; never lint generated output.
+  { ignores: ['**/node_modules', '**/dist', '**/out', 'studio', 'dist-studio'] },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],
@@ -26,6 +29,14 @@ export default defineConfig(
     rules: {
       ...eslintPluginReactHooks.configs.recommended.rules,
       ...eslintPluginReactRefresh.configs.vite.rules
+    }
+  },
+  // Build scripts (scripts/*.mjs) are plain ESM, not TypeScript — TS-only
+  // rules from `tseslint.configs.recommended` don't apply.
+  {
+    files: ['**/*.{js,mjs,cjs}'],
+    rules: {
+      '@typescript-eslint/explicit-function-return-type': 'off'
     }
   },
   eslintConfigPrettier
