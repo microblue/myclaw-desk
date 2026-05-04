@@ -1,34 +1,26 @@
-# myclaw-desk
+# MyClaw.One Desktop
 
-An Electron application with React and TypeScript
-
-## Recommended IDE Setup
-
-- [VSCode](https://code.visualstudio.com/) + [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) + [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
+Desktop client for [myclaw.one](https://myclaw.one) — connects to local or cloud OpenClaw deployments and embeds a chat UI on top.
 
 ## Project Setup
 
 ### Install
 
 ```bash
-$ pnpm install
+pnpm install              # root: Electron app
+cd studio && npm install  # sub-project: embedded Studio (one-time)
 ```
 
 ### Development
 
 ```bash
-$ pnpm dev
+pnpm dev
 ```
+
+Boots the splash, spawns the embedded Studio child, swaps the window URL once Studio is ready.
 
 ### Build
 
 ```bash
-# For windows
-$ pnpm build:win
-
-# For macOS
-$ pnpm build:mac
-
-# For Linux
-$ pnpm build:linux
+pnpm build:mac    # or :win / :linux
 ```

@@ -54,7 +54,7 @@ function swapToStudio(state: StudioState): void {
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('ai.openclaw.desktop')
+  electronApp.setAppUserModelId('one.myclaw.desktop')
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)

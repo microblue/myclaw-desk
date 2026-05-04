@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: myclaw-desk
+appId: one.myclaw.desktop
+productName: MyClaw.One Desktop
 directories:
   buildResources: build
 files:

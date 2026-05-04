@@ -1,8 +1,6 @@
-![Home screen](home-screen.png)
+# MyClaw Studio
 
-# OpenClaw Studio
-
-OpenClaw Studio is a clean web dashboard for OpenClaw. Use it to connect to your Gateway, see your agents, chat, manage approvals, and configure jobs from one place.
+The web UI embedded in MyClaw.One Desktop. Connects to an OpenClaw Gateway, shows agents/chat/approvals/jobs in one place. Forked from grp06/openclaw-studio (MIT).
 
 ## Get Started (Pick Your Setup)
 
