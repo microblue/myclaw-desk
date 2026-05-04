@@ -1,0 +1,113 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    # Manual dispatch from a non-tag ref runs the build matrix only — the
+    # `release` job is gated on `startsWith(github.ref, 'refs/tags/v')` and
+    # is skipped automatically.
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+            builder_flag: linux
+            artifact_glob: |
+              dist/*.AppImage
+              dist/latest-linux.yml
+          - os: macos-13
+            target: darwin-x64
+            builder_flag: mac
+            artifact_glob: |
+              dist/*.dmg
+              dist/*.zip
+              dist/latest-mac.yml
+          - os: macos-14
+            target: darwin-arm64
+            builder_flag: mac
+            artifact_glob: |
+              dist/*.dmg
+              dist/*.zip
+              dist/latest-mac.yml
+          - os: windows-latest
+            target: win-x64
+            builder_flag: win
+            artifact_glob: |
+              dist/*.exe
+              dist/*.exe.blockmap
+              dist/latest.yml
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install root deps
+        run: pnpm install --frozen-lockfile
+
+      # Build the platform-specific artifact. We invoke each step explicitly
+      # (instead of `pnpm build:<os>`) so we can pass `--publish never` to
+      # electron-builder — otherwise it'd auto-publish to GitHub on tag, which
+      # would race with the `release` job below.
+      #
+      # CSC_IDENTITY_AUTO_DISCOVERY=false disables code signing on macOS — we
+      # ship unsigned for the first release.
+      - name: Compile (electron-vite)
+        shell: bash
+        run: pnpm exec electron-vite build
+
+      - name: Stage runtime + studio
+        shell: bash
+        run: pnpm prepack
+
+      - name: Package (electron-builder, ${{ matrix.target }})
+        shell: bash
+        run: pnpm exec electron-builder --${{ matrix.builder_flag }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: myclaw-desk-${{ matrix.target }}
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Attach to GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la dist-artifacts/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist-artifacts/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint + typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm lint
+
+      - run: pnpm typecheck
+
+  e2e:
+    name: E2E (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # Studio's Next dev server runs as a child process during e2e (the
+      # bootstrap state machine kicks it off once the fake gateway is ready).
+      # Without studio/node_modules the spawn fails noisily; install it so
+      # logs stay clean.
+      - name: Install root deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Install studio deps
+        working-directory: studio
+        run: npm ci
+
+      # Electron needs an X server. xvfb-run wraps the test invocation in a
+      # virtual display so headless runners can drive the BrowserWindow.
+      - name: Run e2e under xvfb
+        run: xvfb-run -a pnpm e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
