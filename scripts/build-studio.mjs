@@ -65,30 +65,44 @@ await cp(STUDIO_SRC, DIST, {
   preserveTimestamps: true
 })
 
-console.log('[build-studio] (2/3) installing prod deps (npm ci --omit=dev)…')
-const npmRun = (...args) =>
+// Tell better-sqlite3's prebuild-install to fetch the prebuilt for the bundled
+// Node ABI, not the host Node ABI. Without this we get a NODE_MODULE_VERSION
+// mismatch when the packaged app (Node 24) loads a binary built for the
+// install-time Node.
+const bundledNodeVersion = execFileSync(BUNDLED_NODE, ['-p', 'process.version'], {
+  encoding: 'utf8'
+})
+  .trim()
+  .replace(/^v/, '')
+
+const npmEnv = {
+  ...process.env,
+  npm_config_target: bundledNodeVersion,
+  npm_config_runtime: 'node',
+  npm_config_target_arch: process.arch,
+  npm_config_target_platform: process.platform === 'win32' ? 'win32' : process.platform,
+  npm_config_yes: 'true'
+}
+const runNpm = (...args) =>
   execFileSync(BUNDLED_NODE, [BUNDLED_NPM_CLI, ...args], {
     cwd: DIST,
     stdio: 'inherit',
-    env: { ...process.env, npm_config_yes: 'true' }
+    env: npmEnv
   })
 
-// Tell better-sqlite3's prebuild-install to fetch the prebuilt for our bundled
-// Node version, not the host Node.
-const npmEnv = {
-  ...process.env,
-  npm_config_target: process.env.NODE_VERSION || undefined,
-  npm_config_runtime: 'node',
-  npm_config_target_arch: process.arch,
-  npm_config_target_platform: process.platform === 'win32' ? 'win32' : process.platform
-}
-execFileSync(BUNDLED_NODE, [BUNDLED_NPM_CLI, 'ci', '--omit=dev', '--no-audit', '--no-fund'], {
-  cwd: DIST,
-  stdio: 'inherit',
-  env: npmEnv
-})
+// We need devDeps (postcss, tailwind, typescript, etc.) at build time even
+// though we don't ship them — Tailwind v4 + Next.js compile through them.
+// Order: full install → build → prune to ship-only.
+console.log('[build-studio] (2/4) installing all deps (npm ci)…')
+runNpm('ci', '--no-audit', '--no-fund')
 
-console.log('[build-studio] (3/3) running next build…')
-npmRun('run', 'build')
+console.log('[build-studio] (3/4) running next build…')
+runNpm('run', 'build')
+
+console.log('[build-studio] (4/5) pruning dev deps…')
+runNpm('prune', '--omit=dev')
+
+console.log(`[build-studio] (5/5) rebuilding native modules against bundled Node ${bundledNodeVersion}…`)
+runNpm('rebuild', 'better-sqlite3', '--update-binary')
 
 console.log(`[build-studio] done — dist-studio/ ready (${DIST})`)
