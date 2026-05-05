@@ -4,6 +4,7 @@ import * as net from 'net'
 import { existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { getPaths } from '../openclaw/paths'
+import { installLogger } from '../installLogger'
 import type { StudioState } from '../../shared/studio'
 
 const READY_TIMEOUT_MS = 60_000
@@ -145,6 +146,10 @@ class StudioProcess extends EventEmitter {
 
       const onLine = (chunk: Buffer): void => {
         const text = chunk.toString('utf8')
+        for (const raw of text.split(/\r?\n/)) {
+          const line = raw.trim()
+          if (line) installLogger.log({ source: 'studio', text: line })
+        }
         const lastLine = text.split(/\r?\n/).filter(Boolean).pop()
         if (lastLine) this.update({ logTail: lastLine })
         if (settled) return

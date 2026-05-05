@@ -115,5 +115,7 @@ async function waitForReadyOrExit(child: ChildProcess, port: number): Promise<vo
   }
   // Time's up. Best-effort kill so the caller doesn't leak the child.
   if (child.exitCode === null) child.kill('SIGTERM')
-  throw new Error(`openclaw gateway did not start listening on port ${port} within ${READY_TIMEOUT_MS / 1000}s`)
+  throw new Error(
+    `openclaw gateway did not start listening on port ${port} within ${READY_TIMEOUT_MS / 1000}s`
+  )
 }

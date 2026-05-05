@@ -2,6 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { BOOTSTRAP_CHANNELS, type BootstrapState } from '../shared/bootstrap'
 import { STUDIO_CHANNELS, type StudioState } from '../shared/studio'
+import {
+  INSTALL_REPORT_CHANNELS,
+  type InstallReportState,
+  type InstallLogLine
+} from '../shared/installReport'
 
 const api = {
   bootstrap: {
@@ -21,6 +26,22 @@ const api = {
       const listener = (_: Electron.IpcRendererEvent, state: StudioState): void => cb(state)
       ipcRenderer.on(STUDIO_CHANNELS.stateChanged, listener)
       return () => ipcRenderer.off(STUDIO_CHANNELS.stateChanged, listener)
+    }
+  },
+  installReport: {
+    getState: (): Promise<InstallReportState> =>
+      ipcRenderer.invoke(INSTALL_REPORT_CHANNELS.getState),
+    resend: (): Promise<InstallReportState> => ipcRenderer.invoke(INSTALL_REPORT_CHANNELS.resend),
+    getLog: (): Promise<InstallLogLine[]> => ipcRenderer.invoke(INSTALL_REPORT_CHANNELS.getLog),
+    onStateChanged: (cb: (state: InstallReportState) => void): (() => void) => {
+      const listener = (_: Electron.IpcRendererEvent, state: InstallReportState): void => cb(state)
+      ipcRenderer.on(INSTALL_REPORT_CHANNELS.stateChanged, listener)
+      return () => ipcRenderer.off(INSTALL_REPORT_CHANNELS.stateChanged, listener)
+    },
+    onLogAppended: (cb: (line: InstallLogLine) => void): (() => void) => {
+      const listener = (_: Electron.IpcRendererEvent, line: InstallLogLine): void => cb(line)
+      ipcRenderer.on(INSTALL_REPORT_CHANNELS.logAppended, listener)
+      return () => ipcRenderer.off(INSTALL_REPORT_CHANNELS.logAppended, listener)
     }
   }
 }

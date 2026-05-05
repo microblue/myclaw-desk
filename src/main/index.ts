@@ -4,8 +4,10 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerBootstrapIpc } from './ipc/bootstrap'
 import { registerStudioIpc } from './ipc/studio'
+import { registerInstallReportIpc } from './ipc/installReport'
 import { bootstrapper } from './openclaw/bootstrap'
 import { studio } from './studio/process'
+import { installReporter } from './installReporter'
 import type { BootstrapState } from '../shared/bootstrap'
 import type { StudioState } from '../shared/studio'
 
@@ -59,6 +61,12 @@ function swapToStudio(state: StudioState): void {
   // Avoid pointless reloads if we're already on the studio URL.
   const current = mainWindow.webContents.getURL()
   if (current.startsWith(state.url)) return
+  // Mark the final bootstrap gate green only when the URL actually loads —
+  // a load failure (studio crashed, port misbinds) should leave the gate red.
+  const onLoaded = (): void => {
+    bootstrapper.markStudioConnected(`connected to ${state.url}`)
+  }
+  mainWindow.webContents.once('did-finish-load', onLoaded)
   void mainWindow.loadURL(state.url)
 }
 
@@ -71,6 +79,7 @@ app.whenReady().then(() => {
 
   registerBootstrapIpc()
   registerStudioIpc()
+  registerInstallReportIpc()
 
   createWindow()
 
@@ -83,6 +92,12 @@ app.whenReady().then(() => {
   bootstrapper.on('state', (state: BootstrapState) => {
     if (state.phase === 'ready' && studio.getState().phase === 'idle') {
       void studio.start()
+    }
+    // Auto-fire crash report once on bootstrap error. Reporter is idempotent:
+    // a duplicate trigger while a send is in flight resolves to the same
+    // promise; once status is 'sent' we don't repeat.
+    if (state.phase === 'error') {
+      void installReporter.report(state)
     }
   })
   void bootstrapper.ensureReady()

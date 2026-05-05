@@ -29,12 +29,14 @@ const BUNDLED_NODE_DIR = join(
   'node',
   `${process.platform === 'win32' ? 'win' : process.platform}-${process.arch}`
 )
-const BUNDLED_NODE = process.platform === 'win32'
-  ? join(BUNDLED_NODE_DIR, 'node.exe')
-  : join(BUNDLED_NODE_DIR, 'bin', 'node')
-const BUNDLED_NPM_CLI = process.platform === 'win32'
-  ? join(BUNDLED_NODE_DIR, 'node_modules', 'npm', 'bin', 'npm-cli.js')
-  : join(BUNDLED_NODE_DIR, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+const BUNDLED_NODE =
+  process.platform === 'win32'
+    ? join(BUNDLED_NODE_DIR, 'node.exe')
+    : join(BUNDLED_NODE_DIR, 'bin', 'node')
+const BUNDLED_NPM_CLI =
+  process.platform === 'win32'
+    ? join(BUNDLED_NODE_DIR, 'node_modules', 'npm', 'bin', 'npm-cli.js')
+    : join(BUNDLED_NODE_DIR, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
 
 if (!existsSync(BUNDLED_NODE)) {
   console.error(`[build-studio] bundled Node not found at ${BUNDLED_NODE}`)
@@ -102,7 +104,9 @@ runNpm('run', 'build')
 console.log('[build-studio] (4/5) pruning dev deps…')
 runNpm('prune', '--omit=dev')
 
-console.log(`[build-studio] (5/5) rebuilding native modules against bundled Node ${bundledNodeVersion}…`)
+console.log(
+  `[build-studio] (5/5) rebuilding native modules against bundled Node ${bundledNodeVersion}…`
+)
 runNpm('rebuild', 'better-sqlite3', '--update-binary')
 
 console.log(`[build-studio] done — dist-studio/ ready (${DIST})`)

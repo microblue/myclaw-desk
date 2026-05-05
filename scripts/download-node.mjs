@@ -80,7 +80,23 @@ async function downloadOne(target, version) {
     if (ext === 'tar.xz') {
       execFileSync('tar', ['-xJf', archivePath, '-C', stage], { stdio: 'inherit' })
     } else {
-      execFileSync('unzip', ['-q', archivePath, '-d', stage], { stdio: 'inherit' })
+      // Windows zip. Prefer the built-in tar.exe (Win10 1803+ ships bsdtar
+      // that handles ZIP); fall back to PowerShell Expand-Archive. The
+      // windows-latest GitHub runner doesn't have `unzip` on PATH by
+      // default, so we deliberately don't try it.
+      try {
+        execFileSync('tar', ['-xf', archivePath, '-C', stage], { stdio: 'inherit' })
+      } catch {
+        execFileSync(
+          'powershell',
+          [
+            '-NoProfile',
+            '-Command',
+            `Expand-Archive -LiteralPath "${archivePath}" -DestinationPath "${stage}" -Force`
+          ],
+          { stdio: 'inherit' }
+        )
+      }
     }
 
     await mkdir(dirname(targetDir), { recursive: true })

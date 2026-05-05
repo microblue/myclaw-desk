@@ -1,6 +1,7 @@
 import { app } from 'electron'
+import { execFileSync } from 'child_process'
 import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { is } from '@electron-toolkit/utils'
 
 export interface OpenclawCommand {
@@ -80,11 +81,42 @@ function resolveBundledNode(): { node: string; npm: string } | null {
 }
 
 function resolveSystemNode(): { node: string; npm: string } {
-  // Dev fallback: use whatever `node` resolves on PATH. Empty npmCli means
-  // the bootstrap installer will spawn `npm` directly instead of `node npm-cli.js`.
+  // Dev fallback: use whatever `node` / `npm` resolve on PATH. We must always
+  // produce a real npm-cli.js path because spawning the `npm` shim directly
+  // breaks on Windows (Node's spawn() refuses .cmd shims since CVE-2024-27980
+  // without `shell: true`). Locate the JS via `where`/`which npm` and read
+  // the shim contents to find npm-cli.js's absolute path.
   const node = process.env.MYCLAW_DESK_NODE || 'node'
-  const npm = process.env.MYCLAW_DESK_NPM_CLI || ''
+  let npm = process.env.MYCLAW_DESK_NPM_CLI || ''
+  if (!npm) npm = locateSystemNpmCli() ?? ''
   return { node, npm }
+}
+
+function locateSystemNpmCli(): string | null {
+  try {
+    const lookup = isWin ? 'where' : 'which'
+    const out = execFileSync(lookup, ['npm'], { encoding: 'utf8' }).trim()
+    if (!out) return null
+    // `where` may print multiple lines (one per match); take the first.
+    const first = out.split(/\r?\n/)[0].trim()
+    if (!first) return null
+    // The shim sits next to (or in a parent of) node_modules/npm/bin/npm-cli.js.
+    // Try the typical official-installer / nvm-windows layout first, then
+    // walk up looking for npm/bin/npm-cli.js.
+    let dir: string = dirname(first)
+    for (let i = 0; i < 4; i++) {
+      const candidate = join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.js')
+      if (existsSync(candidate)) return candidate
+      const candidateLib = join(dir, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+      if (existsSync(candidateLib)) return candidateLib
+      const parent = dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+    return null
+  } catch {
+    return null
+  }
 }
 
 function resolveGatewayPort(): number {
@@ -157,7 +189,6 @@ export function getPaths(): OpenclawPaths {
     stateDir: resolveStateDir()
   }
   if (is.dev && !bundled) {
-    // eslint-disable-next-line no-console
     console.warn(
       '[openclaw/paths] Using system node — bundled runtime not found at',
       bundledNodeRoot()
