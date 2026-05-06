@@ -5,7 +5,7 @@ export function ChatView(): React.JSX.Element {
         <div>
           <h1 className="text-4xl font-bold">Ready</h1>
           <p className="py-4 text-base-content/70">
-            OpenClaw is installed. Daemon control + chat UI land in the next iteration.
+            MyClaw is installed. Daemon control + chat UI land in the next iteration.
           </p>
           <button className="btn btn-primary btn-lg" disabled>
             Press to talk

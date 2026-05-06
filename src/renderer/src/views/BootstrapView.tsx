@@ -14,12 +14,12 @@ const PHASE_TITLES: Record<string, string> = {
   idle: 'Getting ready…',
   detecting: 'Looking for an existing install',
   preparing: 'Preparing your machine',
-  installing: 'Downloading OpenClaw',
-  'verifying-openclaw': 'Verifying OpenClaw',
-  'starting-gateway': 'Starting the gateway',
+  installing: 'Downloading MyClaw',
+  'verifying-openclaw': 'Verifying MyClaw engine',
+  'starting-gateway': 'Starting MyClaw service',
   'configuring-provider': 'Configuring AI provider',
-  'verifying-studio': 'Verifying Studio',
-  ready: 'Ready — opening Studio',
+  'verifying-studio': 'Verifying MyClaw workspace',
+  ready: 'Ready — opening workspace',
   error: 'Install failed'
 }
 
@@ -128,7 +128,7 @@ export function BootstrapView({ state, onRetry }: Props): React.JSX.Element {
             />
           ) : (
             <p className="mt-2 text-center text-xs text-base-content/40">
-              Packaging OpenClaw {opt(checks.find((c) => c.id === 'openclaw')?.detail)}
+              MyClaw engine {opt(checks.find((c) => c.id === 'openclaw')?.detail)}
             </p>
           )}
         </div>

@@ -80,7 +80,7 @@ class Bootstrapper extends EventEmitter {
       this.update({
         phase: 'detecting',
         progress: 0.05,
-        message: 'Checking for an existing OpenClaw gateway…'
+        message: 'Checking for an existing MyClaw service…'
       })
 
       // Step 1: if a gateway is already responding on our configured port,
@@ -96,7 +96,7 @@ class Bootstrapper extends EventEmitter {
         this.update({
           phase: 'ready',
           progress: 1,
-          message: 'OpenClaw gateway already running.',
+          message: 'MyClaw service already running.',
           gatewayUrl: paths.gatewayUrl
         })
         return this.state
@@ -122,7 +122,7 @@ class Bootstrapper extends EventEmitter {
         this.update({
           phase: 'installing',
           progress: -1,
-          message: `Installing OpenClaw ${OPENCLAW_VERSION}…`
+          message: `Installing MyClaw engine ${OPENCLAW_VERSION}…`
         })
         this.markCheck('openclaw', 'active', `installing v${OPENCLAW_VERSION}`)
         await this.runNpmInstall()
@@ -136,9 +136,9 @@ class Bootstrapper extends EventEmitter {
       resetPathsCache()
       const fresh = getPaths()
       if (!existsSync(fresh.openclaw.existsAt)) {
-        this.markCheck('openclaw', 'failed', `CLI not found at ${fresh.openclaw.existsAt}`)
+        this.markCheck('openclaw', 'failed', `engine not found at ${fresh.openclaw.existsAt}`)
         throw new Error(
-          `OpenClaw CLI not found at ${fresh.openclaw.existsAt}. Set MYCLAW_DESK_OPENCLAW_BIN or rerun install.`
+          `MyClaw engine not found at ${fresh.openclaw.existsAt}. Reinstall or rerun.`
         )
       }
 
@@ -146,7 +146,7 @@ class Bootstrapper extends EventEmitter {
       this.update({
         phase: 'starting-gateway',
         progress: 0.7,
-        message: 'Starting OpenClaw gateway…'
+        message: 'Starting MyClaw service…'
       })
       this.markCheck('gateway', 'active', `binding :${fresh.gatewayPort}…`)
       this.managedGateway = await startManagedGateway({
@@ -165,7 +165,7 @@ class Bootstrapper extends EventEmitter {
       this.update({
         phase: 'configuring-provider',
         progress: 0.85,
-        message: 'Checking LLM provider configuration…'
+        message: 'Checking AI provider configuration…'
       })
       this.runProviderCheck()
 
@@ -176,7 +176,7 @@ class Bootstrapper extends EventEmitter {
       this.update({
         phase: 'verifying-studio',
         progress: 0.95,
-        message: 'Verifying OpenClaw Studio…'
+        message: 'Verifying MyClaw workspace…'
       })
       this.runStudioCheck()
 
@@ -188,7 +188,7 @@ class Bootstrapper extends EventEmitter {
       this.update({
         phase: 'ready',
         progress: 1,
-        message: 'OpenClaw gateway is ready.',
+        message: 'MyClaw service is ready.',
         gatewayUrl: this.managedGateway.url
       })
       return this.state
@@ -239,7 +239,7 @@ class Bootstrapper extends EventEmitter {
       this.markCheck(
         'provider',
         'warn',
-        'No provider env var detected — set OPENROUTER_API_KEY (or ANTHROPIC_API_KEY) before chat'
+        'No AI provider key detected — set OPENROUTER_API_KEY (or ANTHROPIC_API_KEY) before chat'
       )
     }
   }
@@ -259,7 +259,7 @@ class Bootstrapper extends EventEmitter {
         return
       }
     }
-    this.markCheck('studio', 'warn', 'Studio entry not found — falling back to remote')
+    this.markCheck('studio', 'warn', 'Workspace entry not found — falling back to remote')
   }
 
   private detectInstalledVersion(runtime: string): string | undefined {
@@ -295,8 +295,8 @@ class Bootstrapper extends EventEmitter {
       // it instead of silently failing.
       return Promise.reject(
         new Error(
-          'No Node runtime found: bundled node missing from package and no system npm on PATH. ' +
-            'Reinstall MyClaw.One Desktop, or set MYCLAW_DESK_NPM_CLI to an absolute path to npm-cli.js.'
+          'MyClaw runtime missing: the installer did not ship a Node binary and no system npm was found. ' +
+            'Reinstall MyClaw.One Desktop.'
         )
       )
     }

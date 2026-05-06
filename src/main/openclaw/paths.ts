@@ -44,9 +44,12 @@ export interface OpenclawPaths {
 
 const isWin = process.platform === 'win32'
 
+// Directory naming uses process.platform verbatim ('win32', not 'win') to
+// match electron-builder's ${platform} macro. extraResources silently
+// no-ops when from= doesn't exist, so any drift here means the package
+// ships without the bundled runtime.
 function hostTarget(): string {
-  const platform = isWin ? 'win' : process.platform
-  return `${platform}-${process.arch}`
+  return `${process.platform}-${process.arch}`
 }
 
 /**

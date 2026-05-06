@@ -23,12 +23,7 @@ const ROOT = resolve(SCRIPT_DIR, '..')
 const STUDIO_SRC = join(ROOT, 'studio')
 const DIST = join(ROOT, 'dist-studio')
 
-const BUNDLED_NODE_DIR = join(
-  ROOT,
-  'resources',
-  'node',
-  `${process.platform === 'win32' ? 'win' : process.platform}-${process.arch}`
-)
+const BUNDLED_NODE_DIR = join(ROOT, 'resources', 'node', `${process.platform}-${process.arch}`)
 const BUNDLED_NODE =
   process.platform === 'win32'
     ? join(BUNDLED_NODE_DIR, 'node.exe')

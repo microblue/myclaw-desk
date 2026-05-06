@@ -24,10 +24,8 @@ const RESOURCES_DIR = join(ROOT, 'resources', 'node')
 
 const MAJOR = '24'
 
-function normalizePlatform(p) {
-  if (p === 'darwin') return 'darwin'
-  if (p === 'win32') return 'win'
-  if (p === 'linux') return 'linux'
+function validatePlatform(p) {
+  if (p === 'darwin' || p === 'linux' || p === 'win32') return p
   throw new Error(`Unsupported platform: ${p}`)
 }
 
@@ -36,8 +34,17 @@ function normalizeArch(a) {
   throw new Error(`Unsupported arch: ${a}`)
 }
 
+// Target dir names use Node's `process.platform` (and electron-builder's
+// `${platform}` macro) verbatim — `win32`, not `win`. Node.js's *download
+// URL* still uses the short form (`node-vX-win-x64.zip`); we map only the
+// URL, not the directory layout, otherwise extraResources expands
+// `${platform}-${arch}` to `win32-x64` and the bundle goes missing.
 function detectHostTarget() {
-  return `${normalizePlatform(process.platform)}-${normalizeArch(process.arch)}`
+  return `${validatePlatform(process.platform)}-${normalizeArch(process.arch)}`
+}
+
+function nodeUrlPlatform(p) {
+  return p === 'win32' ? 'win' : p
 }
 
 function resolveNodeVersion() {
@@ -53,7 +60,7 @@ function resolveNodeVersion() {
 }
 
 function targetBinPath(targetDir, platform) {
-  return platform === 'win' ? join(targetDir, 'node.exe') : join(targetDir, 'bin', 'node')
+  return platform === 'win32' ? join(targetDir, 'node.exe') : join(targetDir, 'bin', 'node')
 }
 
 async function downloadOne(target, version) {
@@ -66,47 +73,58 @@ async function downloadOne(target, version) {
     return
   }
 
-  const ext = platform === 'win' ? 'zip' : 'tar.xz'
-  const folder = `node-v${version}-${platform}-${arch}`
-  const url = `https://nodejs.org/dist/v${version}/${folder}.${ext}`
+  // Node.js's URL uses 'win' but our directory layout uses 'win32' to match
+  // electron-builder's ${platform} macro.
+  const urlPlatform = nodeUrlPlatform(platform)
+  const ext = platform === 'win32' ? 'zip' : 'tar.xz'
+  const urlFolder = `node-v${version}-${urlPlatform}-${arch}`
+  const url = `https://nodejs.org/dist/v${version}/${urlFolder}.${ext}`
   console.log(`[node] downloading ${url}`)
 
   const stage = join(tmpdir(), `myclaw-node-${process.pid}-${target}`)
   mkdirSync(stage, { recursive: true })
   try {
-    const archivePath = join(stage, `${folder}.${ext}`)
+    const archivePath = join(stage, `${urlFolder}.${ext}`)
     execFileSync('curl', ['-fsSL', '-o', archivePath, url], { stdio: 'inherit' })
 
     if (ext === 'tar.xz') {
       execFileSync('tar', ['-xJf', archivePath, '-C', stage], { stdio: 'inherit' })
     } else {
-      // Windows zip. Prefer the built-in tar.exe (Win10 1803+ ships bsdtar
-      // that handles ZIP); fall back to PowerShell Expand-Archive. The
-      // windows-latest GitHub runner doesn't have `unzip` on PATH by
-      // default, so we deliberately don't try it.
-      try {
-        execFileSync('tar', ['-xf', archivePath, '-C', stage], { stdio: 'inherit' })
-      } catch {
-        execFileSync(
-          'powershell',
-          [
-            '-NoProfile',
-            '-Command',
-            `Expand-Archive -LiteralPath "${archivePath}" -DestinationPath "${stage}" -Force`
-          ],
-          { stdio: 'inherit' }
-        )
-      }
+      // Windows zip. Use PowerShell Expand-Archive directly — it's reliably
+      // present on every Windows runner. Git's MSYS tar interprets `C:\…`
+      // paths as remote hosts and fails ("Cannot connect to C: resolve
+      // failed"), and `unzip` isn't on PATH on windows-latest.
+      execFileSync(
+        'powershell',
+        [
+          '-NoProfile',
+          '-Command',
+          `Expand-Archive -LiteralPath "${archivePath}" -DestinationPath "${stage}" -Force`
+        ],
+        { stdio: 'inherit' }
+      )
     }
 
     await mkdir(dirname(targetDir), { recursive: true })
     await rm(targetDir, { recursive: true, force: true })
     // cp handles cross-filesystem moves where rename gets EXDEV.
-    await cp(join(stage, folder), targetDir, {
+    await cp(join(stage, urlFolder), targetDir, {
       recursive: true,
       preserveTimestamps: true,
       verbatimSymlinks: true
     })
+
+    // Hard-fail if the binary we promised isn't actually there. Silent
+    // mismatch (e.g. wrong layout from extractor) would propagate into
+    // electron-builder, which only logs a warning when extraResources
+    // can't find a source dir — exactly how v0.1.3 shipped without node.
+    const finalBin = targetBinPath(targetDir, platform)
+    if (!existsSync(finalBin)) {
+      throw new Error(
+        `[node] expected binary missing after extraction: ${finalBin}. ` +
+          `Stage: ${stage}. Archive layout may have changed.`
+      )
+    }
     console.log(`[node] installed ${target} at ${targetDir}`)
   } finally {
     await rm(stage, { recursive: true, force: true })

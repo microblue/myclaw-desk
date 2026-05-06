@@ -49,9 +49,9 @@ export const BOOTSTRAP_CHANNELS = {
 } as const
 
 export const DEFAULT_CHECKS: BootstrapCheck[] = [
-  { id: 'openclaw', label: `OpenClaw ${OPENCLAW_VERSION} installed`, status: 'pending' },
-  { id: 'provider', label: 'LLM provider configured', status: 'pending' },
-  { id: 'gateway', label: 'OpenClaw gateway running', status: 'pending' },
-  { id: 'studio', label: 'OpenClaw Studio installed', status: 'pending' },
-  { id: 'studio-connected', label: 'Studio connected to gateway', status: 'pending' }
+  { id: 'openclaw', label: `MyClaw engine ${OPENCLAW_VERSION} installed`, status: 'pending' },
+  { id: 'provider', label: 'AI provider configured', status: 'pending' },
+  { id: 'gateway', label: 'MyClaw service running', status: 'pending' },
+  { id: 'studio', label: 'MyClaw workspace installed', status: 'pending' },
+  { id: 'studio-connected', label: 'Workspace connected to service', status: 'pending' }
 ]
