@@ -12,7 +12,7 @@
 // Re-running with the binary already present is a no-op.
 
 import { existsSync, mkdirSync } from 'node:fs'
-import { mkdir, rm, cp } from 'node:fs/promises'
+import { mkdir, rm, cp, rename } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -129,6 +129,23 @@ async function downloadOne(target, version) {
       verbatimSymlinks: true
     })
 
+    // Rename node_modules → vendor_modules so electron-builder's
+    // extraResources stops stripping it. v0.1.6/v0.1.7 verified that
+    // even with `filter: ['**/*']`, anything literally named node_modules
+    // is dropped in the packaging pass. Renaming sidesteps the filter.
+    // paths.ts on the desktop side knows to look at vendor_modules.
+    const npmDirSrc =
+      platform === 'win32'
+        ? join(targetDir, 'node_modules')
+        : join(targetDir, 'lib', 'node_modules')
+    const npmDirDst =
+      platform === 'win32'
+        ? join(targetDir, 'vendor_modules')
+        : join(targetDir, 'lib', 'vendor_modules')
+    if (existsSync(npmDirSrc)) {
+      await rename(npmDirSrc, npmDirDst)
+    }
+
     // Hard-fail if the binary we promised isn't actually there. Silent
     // mismatch (e.g. wrong layout from extractor) would propagate into
     // electron-builder, which only logs a warning when extraResources
@@ -144,14 +161,10 @@ async function downloadOne(target, version) {
     // extraction historically dropped node_modules/ silently; assert the
     // CLI entrypoint is present so prepack fails loudly instead of
     // shipping a half-bundle.
-    const npmCliRel =
-      platform === 'win32'
-        ? join('node_modules', 'npm', 'bin', 'npm-cli.js')
-        : join('lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
-    const npmCli = join(targetDir, npmCliRel)
+    const npmCli = join(npmDirDst, 'npm', 'bin', 'npm-cli.js')
     if (!existsSync(npmCli)) {
       throw new Error(
-        `[node] expected npm-cli.js missing after extraction: ${npmCli}. ` +
+        `[node] expected npm-cli.js missing after extraction/rename: ${npmCli}. ` +
           `Long-path or extraction layout issue — half-bundle would ship.`
       )
     }

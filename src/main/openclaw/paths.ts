@@ -69,17 +69,21 @@ function bundledNodeRoot(): string {
 }
 
 function resolveBundledNode(): { node: string; npm: string } | null {
+  // The npm tree lives under `vendor_modules/`, not `node_modules/`.
+  // electron-builder's extraResources hard-strips anything named
+  // node_modules even with `filter: ['**/*']`; download-node.mjs renames
+  // to dodge that filter. See scripts/download-node.mjs for the rename.
   const root = bundledNodeRoot()
   if (!existsSync(root)) return null
   if (isWin) {
     return {
       node: join(root, 'node.exe'),
-      npm: join(root, 'node_modules', 'npm', 'bin', 'npm-cli.js')
+      npm: join(root, 'vendor_modules', 'npm', 'bin', 'npm-cli.js')
     }
   }
   return {
     node: join(root, 'bin', 'node'),
-    npm: join(root, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+    npm: join(root, 'lib', 'vendor_modules', 'npm', 'bin', 'npm-cli.js')
   }
 }
 

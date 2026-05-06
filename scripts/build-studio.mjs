@@ -30,8 +30,8 @@ const BUNDLED_NODE =
     : join(BUNDLED_NODE_DIR, 'bin', 'node')
 const BUNDLED_NPM_CLI =
   process.platform === 'win32'
-    ? join(BUNDLED_NODE_DIR, 'node_modules', 'npm', 'bin', 'npm-cli.js')
-    : join(BUNDLED_NODE_DIR, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+    ? join(BUNDLED_NODE_DIR, 'vendor_modules', 'npm', 'bin', 'npm-cli.js')
+    : join(BUNDLED_NODE_DIR, 'lib', 'vendor_modules', 'npm', 'bin', 'npm-cli.js')
 
 if (!existsSync(BUNDLED_NODE)) {
   console.error(`[build-studio] bundled Node not found at ${BUNDLED_NODE}`)

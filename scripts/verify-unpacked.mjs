@@ -39,8 +39,8 @@ const nodeRoot = join(resourcesDir, 'node', target)
 const required = [
   platform === 'win32' ? join(nodeRoot, 'node.exe') : join(nodeRoot, 'bin', 'node'),
   platform === 'win32'
-    ? join(nodeRoot, 'node_modules', 'npm', 'bin', 'npm-cli.js')
-    : join(nodeRoot, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    ? join(nodeRoot, 'vendor_modules', 'npm', 'bin', 'npm-cli.js')
+    : join(nodeRoot, 'lib', 'vendor_modules', 'npm', 'bin', 'npm-cli.js'),
   join(resourcesDir, 'studio', 'server', 'index.js')
 ]
 
