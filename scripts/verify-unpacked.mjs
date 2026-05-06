@@ -7,13 +7,18 @@
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-const target = process.argv[2]
-if (!target) {
-  console.error('usage: verify-unpacked.mjs <target>   e.g. win32-x64, linux-x64')
+const matrixTarget = process.argv[2]
+if (!matrixTarget) {
+  console.error('usage: verify-unpacked.mjs <matrix-target>   e.g. win-x64, linux-x64')
   process.exit(2)
 }
 
-const [platform, arch] = target.split('-')
+// Matrix target labels (win-x64) → runtime/extraResources dir names
+// (win32-x64). Linux/macOS already match.
+const [matrixPlatform, arch] = matrixTarget.split('-')
+const platform =
+  matrixPlatform === 'win' ? 'win32' : matrixPlatform === 'mac' ? 'darwin' : matrixPlatform
+const target = `${platform}-${arch}`
 const ROOT = resolve(import.meta.dirname, '..')
 
 // electron-builder's per-target unpacked dir name.
