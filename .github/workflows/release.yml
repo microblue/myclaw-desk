@@ -68,6 +68,14 @@ jobs:
         shell: bash
         run: pnpm exec electron-builder --${{ matrix.builder_flag }} --publish never
 
+      # Belt-and-suspenders: every previous shipped release was missing
+      # something — first the bundled-node dir entirely, then node.exe alone
+      # without npm. Assert npm-cli.js made it into the unpacked tree before
+      # we let the artifact upload, otherwise we ship another broken installer.
+      - name: Verify bundled Node + npm in unpacked output
+        shell: bash
+        run: node scripts/verify-unpacked.mjs ${{ matrix.target }}
+
       # Smoke-test the packaged binary against the fake openclaw gateway.
       # Linux needs xvfb; the spec self-skips on Windows (the fake-openclaw
       # shebang script needs a .cmd shim there).

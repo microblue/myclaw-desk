@@ -18,12 +18,20 @@ extraResources:
   # Bundled Node 24 runtime. ${platform}/${arch} expand per-target build, so
   # a Linux package only ships linux-x64, etc. Populate via:
   #   node scripts/download-node.mjs
+  #
+  # The explicit filter overrides electron-builder's default extraResources
+  # exclusions, which otherwise drop `**/node_modules/**` and ship a
+  # half-bundle (node.exe alone, no npm). v0.1.4 + v0.1.5 hit exactly this.
   - from: resources/node/${platform}-${arch}/
     to: node/${platform}-${arch}/
+    filter:
+      - '**/*'
   # Embedded Studio (production tree, deps pruned). Populate via:
   #   node scripts/build-studio.mjs
   - from: dist-studio/
     to: studio/
+    filter:
+      - '**/*'
 asarUnpack:
   - resources/**
 win:
