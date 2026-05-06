@@ -47,6 +47,23 @@ function nodeUrlPlatform(p) {
   return p === 'win32' ? 'win' : p
 }
 
+function locate7z() {
+  // windows-latest preinstalls 7-Zip but doesn't always have its dir on the
+  // bash PATH that node sees — fall back to the canonical install path.
+  const candidates = [process.env.MYCLAW_DESK_7Z, '7z', 'C:\\Program Files\\7-Zip\\7z.exe'].filter(
+    Boolean
+  )
+  for (const c of candidates) {
+    try {
+      execFileSync(c, ['--help'], { stdio: 'ignore' })
+      return c
+    } catch {
+      // try next
+    }
+  }
+  throw new Error('7z not found — install 7-Zip or set MYCLAW_DESK_7Z')
+}
+
 function resolveNodeVersion() {
   if (process.env.NODE_VERSION) return process.env.NODE_VERSION
   // Probe nodejs.org for the latest 24.x release.
@@ -76,7 +93,12 @@ async function downloadOne(target, version) {
   // Node.js's URL uses 'win' but our directory layout uses 'win32' to match
   // electron-builder's ${platform} macro.
   const urlPlatform = nodeUrlPlatform(platform)
-  const ext = platform === 'win32' ? 'zip' : 'tar.xz'
+  // On Windows we fetch the .7z because npm's nested deps include paths
+  // longer than MAX_PATH (260 chars). PowerShell's Expand-Archive silently
+  // skips those — exactly how v0.1.4 shipped node.exe alone with no
+  // node_modules/npm/. 7z handles long paths reliably and is preinstalled
+  // on the windows-latest runner.
+  const ext = platform === 'win32' ? '7z' : 'tar.xz'
   const urlFolder = `node-v${version}-${urlPlatform}-${arch}`
   const url = `https://nodejs.org/dist/v${version}/${urlFolder}.${ext}`
   console.log(`[node] downloading ${url}`)
@@ -90,19 +112,12 @@ async function downloadOne(target, version) {
     if (ext === 'tar.xz') {
       execFileSync('tar', ['-xJf', archivePath, '-C', stage], { stdio: 'inherit' })
     } else {
-      // Windows zip. Use PowerShell Expand-Archive directly — it's reliably
-      // present on every Windows runner. Git's MSYS tar interprets `C:\…`
-      // paths as remote hosts and fails ("Cannot connect to C: resolve
-      // failed"), and `unzip` isn't on PATH on windows-latest.
-      execFileSync(
-        'powershell',
-        [
-          '-NoProfile',
-          '-Command',
-          `Expand-Archive -LiteralPath "${archivePath}" -DestinationPath "${stage}" -Force`
-        ],
-        { stdio: 'inherit' }
-      )
+      // Windows .7z. Try `7z` on PATH first; fall back to the well-known
+      // install path on the GitHub-hosted runner.
+      const sevenZip = locate7z()
+      execFileSync(sevenZip, ['x', `-o${stage}`, '-y', archivePath], {
+        stdio: 'inherit'
+      })
     }
 
     await mkdir(dirname(targetDir), { recursive: true })
@@ -123,6 +138,21 @@ async function downloadOne(target, version) {
       throw new Error(
         `[node] expected binary missing after extraction: ${finalBin}. ` +
           `Stage: ${stage}. Archive layout may have changed.`
+      )
+    }
+    // Also verify npm-cli.js made it through. Long-path issues during
+    // extraction historically dropped node_modules/ silently; assert the
+    // CLI entrypoint is present so prepack fails loudly instead of
+    // shipping a half-bundle.
+    const npmCliRel =
+      platform === 'win32'
+        ? join('node_modules', 'npm', 'bin', 'npm-cli.js')
+        : join('lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+    const npmCli = join(targetDir, npmCliRel)
+    if (!existsSync(npmCli)) {
+      throw new Error(
+        `[node] expected npm-cli.js missing after extraction: ${npmCli}. ` +
+          `Long-path or extraction layout issue — half-bundle would ship.`
       )
     }
     console.log(`[node] installed ${target} at ${targetDir}`)
