@@ -127,9 +127,7 @@ async function safeStudioState(
   window: LaunchedApp['window']
 ): Promise<StudioState | { error: string }> {
   try {
-    return (await window.evaluate(() =>
-      window.api?.studio.getState()
-    )) as StudioState
+    return (await window.evaluate(() => window.api?.studio.getState())) as StudioState
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) }
   }

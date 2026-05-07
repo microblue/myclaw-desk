@@ -7,7 +7,21 @@ import { getPaths } from '../openclaw/paths'
 import { installLogger } from '../installLogger'
 import type { StudioState } from '../../shared/studio'
 
-const READY_TIMEOUT_MS = 60_000
+// First-run on Windows can take a while: Next.js cold-compiles on the
+// first request, Defender real-time-scans every node_modules file the
+// server touches, and better-sqlite3 may init the SQLite db. 60s was not
+// enough on at least one user's machine — the splash kept spinning past
+// the test timeout. 3 min covers slow paths without making genuinely
+// stuck failure modes intolerable. Overridable via env so test sandboxes
+// can fail fast without inheriting the prod-grade timeout.
+const READY_TIMEOUT_MS = (() => {
+  const env = process.env.MYCLAW_DESK_STUDIO_TIMEOUT_MS
+  if (env) {
+    const n = Number.parseInt(env, 10)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return 180_000
+})()
 
 function resolveStudioDir(): string {
   if (process.env.MYCLAW_DESK_STUDIO_DIR) return process.env.MYCLAW_DESK_STUDIO_DIR
@@ -67,6 +81,10 @@ class StudioProcess extends EventEmitter {
       }
 
       const port = await getFreePort()
+      // Initial URL guess; Next.js prints the actual bound URL as "Open in
+      // browser: http://…" — we capture that line in waitForReady and use
+      // it instead of this guess. Avoids mismatches when Next binds to
+      // localhost (IPv6 ::1 sometimes) but our loadURL goes to 127.0.0.1.
       const url = `http://127.0.0.1:${port}`
       const node = getPaths().nodeBin
 
@@ -133,8 +151,8 @@ class StudioProcess extends EventEmitter {
         }
       })
 
-      await this.waitForReady(child, url)
-      this.update({ phase: 'ready', url, message: 'Studio is running.' })
+      const observedUrl = await this.waitForReady(child, url)
+      this.update({ phase: 'ready', url: observedUrl ?? url, message: 'Studio is running.' })
       return this.state
     } catch (err) {
       if (this.child && this.child.exitCode === null) this.child.kill('SIGTERM')
@@ -145,7 +163,12 @@ class StudioProcess extends EventEmitter {
     }
   }
 
-  private waitForReady(child: ChildProcess, url: string): Promise<void> {
+  /**
+   * Resolve to the URL Studio actually printed (preferred, may differ from
+   * our hostname/port guess on IPv6/dual-stack), or undefined if we matched
+   * via a fallback signal. Reject on timeout / process exit / spawn error.
+   */
+  private waitForReady(child: ChildProcess, url: string): Promise<string | undefined> {
     return new Promise((resolve, reject) => {
       let settled = false
       const timer = setTimeout(() => {
@@ -164,10 +187,17 @@ class StudioProcess extends EventEmitter {
         const lastLine = text.split(/\r?\n/).filter(Boolean).pop()
         if (lastLine) this.update({ logTail: lastLine })
         if (settled) return
-        if (text.includes('Open in browser:') || text.includes(url)) {
+        // Match Studio's "Open in browser:" line and capture the URL it
+        // printed. Falls back to substring match against our guessed URL,
+        // then to "Ready in" / "Local: …" patterns Next 15+ uses.
+        const m =
+          text.match(/Open in browser:\s*(https?:\/\/\S+)/i) ??
+          text.match(/(?:Local|URL):\s*(https?:\/\/\S+)/i) ??
+          text.match(/(https?:\/\/(?:127\.0\.0\.1|localhost):\d+)/i)
+        if (m || text.includes(url) || /\bReady\b\s*(?:in|on)/i.test(text)) {
           settled = true
           cleanup()
-          resolve()
+          resolve(m?.[1])
         }
       }
       child.stdout?.on('data', onLine)

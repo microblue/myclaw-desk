@@ -237,6 +237,25 @@ class Bootstrapper extends EventEmitter {
   }
 
   /**
+   * Pipe Studio's latest stdout line into the studio-connected gate's
+   * detail + the global logTail. Gives the user real-time visibility into
+   * "Compiling…", "Ready in 12s", etc. instead of staring at a static
+   * "waiting for Studio…" while Next.js takes its time.
+   */
+  setStudioActivity(line: string): void {
+    if (this.state.phase !== 'ready') return
+    if (this.state.checks?.find((c) => c.id === 'studio-connected')?.status === 'ok') return
+    const trimmed = line.trim()
+    if (!trimmed) return
+    this.markCheck('studio-connected', 'active', trimmed)
+    this.update({ logTail: trimmed })
+  }
+
+  markStudioFailed(detail: string): void {
+    this.markCheck('studio-connected', 'failed', detail)
+  }
+
+  /**
    * Probe well-known env vars for at least one LLM provider key. We don't
    * try to auto-write keys — that needs sourcing infra (managed by
    * MyClaw.One) we haven't built yet. Surfacing the gate as 'warn' with an

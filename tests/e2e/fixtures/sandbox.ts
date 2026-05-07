@@ -60,6 +60,11 @@ export function createSandbox(opts: SandboxOptions = {}): Sandbox {
     // having real openclaw installed (and don't trigger our slow npm install
     // path). The full-stack spec opts out of this.
     env.MYCLAW_DESK_OPENCLAW_BIN = FAKE_OPENCLAW_BIN
+    // Studio's prod-grade ready timeout (3 min) is unrelated to fake-gateway
+    // tests — and a real `next dev` started against the dev studio dir
+    // outlives the test, hanging afterAll. Cap it so studio.start fails fast
+    // in fake mode and the test can clean up.
+    env.MYCLAW_DESK_STUDIO_TIMEOUT_MS = '3000'
   }
 
   let cleaned = false

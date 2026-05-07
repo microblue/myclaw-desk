@@ -79,13 +79,7 @@ export async function startManagedGateway(
   // don't need a remote auth profile.
   const child = spawn(
     opts.openclaw.cmd,
-    [
-      ...opts.openclaw.prefixArgs,
-      'gateway',
-      '--port',
-      String(opts.port),
-      '--allow-unconfigured'
-    ],
+    [...opts.openclaw.prefixArgs, 'gateway', '--port', String(opts.port), '--allow-unconfigured'],
     {
       env: {
         ...process.env,

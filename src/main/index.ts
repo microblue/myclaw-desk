@@ -85,6 +85,26 @@ app.whenReady().then(() => {
 
   studio.on('state', swapToStudio)
 
+  // Pipe Studio process activity into the splash so the user sees what
+  // Studio is doing (Next.js compile, etc.) while the studio-connected gate
+  // is still active — without this it's just a silent spinner. On error,
+  // forward to the bootstrap reporter pipeline (it only fires on bootstrap
+  // errors otherwise, which doesn't cover Studio failures since bootstrap
+  // is already 'ready' by the time Studio is asked to start).
+  studio.on('state', (state: StudioState) => {
+    if (state.phase === 'error') {
+      bootstrapper.markStudioFailed(state.error ?? 'unknown error')
+      void installReporter.report({
+        phase: 'verifying-studio',
+        progress: -1,
+        message: state.message ?? 'Studio failed to start.',
+        error: state.error ?? 'Unknown studio error'
+      })
+    } else if (state.logTail) {
+      bootstrapper.setStudioActivity(state.logTail)
+    }
+  })
+
   // Two-stage launch: bootstrap (install + gateway) first, then studio. Studio
   // depends on the gateway being reachable, so we serialize. Splash UI shows
   // bootstrap progress until phase==='ready', then studio progress until URL
