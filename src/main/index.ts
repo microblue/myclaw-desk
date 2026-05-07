@@ -8,7 +8,6 @@ import { registerInstallReportIpc } from './ipc/installReport'
 import { bootstrapper } from './openclaw/bootstrap'
 import { studio } from './studio/process'
 import { installReporter } from './installReporter'
-import { initAutoUpdate } from './autoUpdate'
 import type { BootstrapState } from '../shared/bootstrap'
 import type { StudioState } from '../shared/studio'
 
@@ -81,11 +80,6 @@ app.whenReady().then(() => {
   registerBootstrapIpc()
   registerStudioIpc()
   registerInstallReportIpc()
-
-  // Background check for desktop updates. Doesn't gate launch — the bootstrap
-  // splash continues regardless. Skipped in dev so iterating doesn't keep
-  // hitting GitHub's API.
-  if (!is.dev) initAutoUpdate()
 
   createWindow()
 

@@ -5,7 +5,7 @@ export interface InstallLogLine {
   /** ISO timestamp. */
   ts: string
   /** Where the line came from: bootstrap state machine, studio child, npm install, etc. */
-  source: 'bootstrap' | 'gateway' | 'studio' | 'npm' | 'reporter' | 'updater'
+  source: 'bootstrap' | 'gateway' | 'studio' | 'npm' | 'reporter'
   level: 'info' | 'warn' | 'error'
   /** Bootstrap phase tag (when known) — e.g. 'installing', 'starting-gateway'. */
   phase?: string
