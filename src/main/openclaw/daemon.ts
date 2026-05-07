@@ -49,6 +49,8 @@ export interface StartManagedGatewayOptions {
   port: number
   /** OPENCLAW_STATE_DIR override (test sandbox). */
   stateDir: string
+  /** Extra env vars for the child (e.g. OPENROUTER_API_KEY from bundled secret). */
+  extraEnv?: Record<string, string>
   /** Stream of stdout/stderr lines for UI logTail. */
   onLog?: (line: string) => void
 }
@@ -88,7 +90,8 @@ export async function startManagedGateway(
       env: {
         ...process.env,
         [pathKey]: `${nodeBinDir}${pathSep}${process.env[pathKey] ?? ''}`,
-        OPENCLAW_STATE_DIR: opts.stateDir
+        OPENCLAW_STATE_DIR: opts.stateDir,
+        ...(opts.extraEnv ?? {})
       },
       stdio: ['ignore', 'pipe', 'pipe']
     }

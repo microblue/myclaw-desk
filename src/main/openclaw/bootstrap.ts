@@ -30,6 +30,12 @@ const PROVIDER_ENV_VARS = [
   'GROQ_API_KEY'
 ] as const
 
+// Build-time injected via electron.vite.config.ts:define. Empty string when
+// the build didn't have BUNDLED_OPENROUTER_KEY set (local dev, forks).
+declare const __BUNDLED_OPENROUTER_KEY__: string
+const BUNDLED_OPENROUTER_KEY: string =
+  typeof __BUNDLED_OPENROUTER_KEY__ === 'string' ? __BUNDLED_OPENROUTER_KEY__ : ''
+
 class Bootstrapper extends EventEmitter {
   private state: BootstrapState = {
     phase: 'idle',
@@ -149,10 +155,19 @@ class Bootstrapper extends EventEmitter {
         message: 'Starting MyClaw service…'
       })
       this.markCheck('gateway', 'active', `binding :${fresh.gatewayPort}…`)
+      // Hand the bundled OpenRouter key to the gateway as an env var. Only
+      // applies when no user-set key was already in process.env — we don't
+      // want the bundled fallback to clobber an env var the user explicitly
+      // configured. openclaw auto-discovers from env at startup.
+      const extraEnv: Record<string, string> = {}
+      if (BUNDLED_OPENROUTER_KEY && !process.env.OPENROUTER_API_KEY) {
+        extraEnv.OPENROUTER_API_KEY = BUNDLED_OPENROUTER_KEY
+      }
       this.managedGateway = await startManagedGateway({
         openclaw: fresh.openclaw,
         port: fresh.gatewayPort,
         stateDir: fresh.stateDir,
+        extraEnv,
         onLog: (line) => {
           this.update({ logTail: line })
           installLogger.log({ source: 'gateway', text: line, phase: this.state.phase })
@@ -228,13 +243,15 @@ class Bootstrapper extends EventEmitter {
    * actionable hint is the honest behavior.
    */
   private runProviderCheck(): void {
-    const found = PROVIDER_ENV_VARS.filter((k) => !!process.env[k])
-    if (found.length > 0) {
+    const fromEnv = PROVIDER_ENV_VARS.filter((k) => !!process.env[k])
+    if (fromEnv.length > 0) {
       this.markCheck(
         'provider',
         'ok',
-        `${found.length} provider${found.length > 1 ? 's' : ''} via env (${found.join(', ')})`
+        `${fromEnv.length} provider${fromEnv.length > 1 ? 's' : ''} via env (${fromEnv.join(', ')})`
       )
+    } else if (BUNDLED_OPENROUTER_KEY) {
+      this.markCheck('provider', 'ok', 'OpenRouter (bundled with installer)')
     } else {
       this.markCheck(
         'provider',

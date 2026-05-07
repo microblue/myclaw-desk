@@ -58,6 +58,12 @@ jobs:
       # would race with the `release` job below.
       - name: Compile (electron-vite)
         shell: bash
+        # Bake the OpenRouter API key into the compiled main bundle via Vite
+        # define (see electron.vite.config.ts). Empty value falls back to the
+        # 'set OPENROUTER_API_KEY' warn path, so a fork without this secret
+        # still produces a working installer (just without bundled provider).
+        env:
+          BUNDLED_OPENROUTER_KEY: ${{ secrets.BUNDLED_OPENROUTER_KEY }}
         run: pnpm exec electron-vite build
 
       - name: Stage runtime + studio
