@@ -14,7 +14,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { rm, cp, mkdir, rename } from 'node:fs/promises'
+import { rm, cp, mkdir, rename, readdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -104,16 +104,27 @@ console.log(
 )
 runNpm('rebuild', 'better-sqlite3', '--update-binary')
 
-// Next.js's NFT bundler writes hashed copies of traced packages under
-// .next/node_modules/<pkg>-<hash>/. On Windows these are typically
-// junctions/symlinks back into ../../node_modules/<pkg>; once we rename
-// the outer node_modules below they dangle, and electron-builder's 7za
-// step ("System cannot find the path specified") fails the whole build.
-// We don't need them at runtime — Next's server already inlined the
-// references during build — so wipe the dir before renaming.
+// Next.js Turbopack writes hashed-name packages under .next/node_modules/
+// (e.g. ws-24bb32dcb9424f99) and the runtime require()s them by that exact
+// name. Earlier we tried wiping the dir; turned out the runtime fails with
+// "Cannot find package 'ws-…'" on first request. They're typically
+// symlinks back into the outer node_modules — on Windows those dangle
+// after we rename below. Solution: dereference each into the outer
+// node_modules (real files, no symlinks), then rename the whole tree to
+// vendor_modules. NODE_PATH at studio spawn time includes vendor_modules
+// so the hashed lookups all resolve there.
 const NEXT_NM = join(DIST, '.next', 'node_modules')
+const NM = join(DIST, 'node_modules')
 if (existsSync(NEXT_NM)) {
-  console.log('[build-studio] (6/7) removing .next/node_modules (NFT symlink cache)')
+  console.log('[build-studio] (6/7) inlining .next/node_modules into top-level')
+  for (const name of await readdir(NEXT_NM)) {
+    const src = join(NEXT_NM, name)
+    const dst = join(NM, name)
+    await rm(dst, { recursive: true, force: true })
+    // dereference: replace symlinks with copies of their targets, so the
+    // moved dir doesn't contain dangling links once node_modules is renamed.
+    await cp(src, dst, { recursive: true, dereference: true })
+  }
   await rm(NEXT_NM, { recursive: true, force: true })
 }
 
@@ -121,10 +132,8 @@ if (existsSync(NEXT_NM)) {
 // `node_modules` even with `filter: ['**/*']`, exactly like it does for the
 // bundled-Node tree. Rename to `vendor_modules` here; main/studio/process.ts
 // sets NODE_PATH to that dir at spawn time so `require('next')` still
-// resolves. Verified by 04-real-bootstrap.spec catching a "Cannot find
-// module 'next'" crash before this rename.
+// resolves.
 console.log('[build-studio] (7/7) renaming node_modules → vendor_modules')
-const NM = join(DIST, 'node_modules')
 const VM = join(DIST, 'vendor_modules')
 if (existsSync(NM)) {
   await rm(VM, { recursive: true, force: true })
