@@ -14,7 +14,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { rm, cp, mkdir } from 'node:fs/promises'
+import { rm, cp, mkdir, rename } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -100,8 +100,22 @@ console.log('[build-studio] (4/5) pruning dev deps…')
 runNpm('prune', '--omit=dev')
 
 console.log(
-  `[build-studio] (5/5) rebuilding native modules against bundled Node ${bundledNodeVersion}…`
+  `[build-studio] (5/6) rebuilding native modules against bundled Node ${bundledNodeVersion}…`
 )
 runNpm('rebuild', 'better-sqlite3', '--update-binary')
+
+// electron-builder's extraResources strips anything literally named
+// `node_modules` even with `filter: ['**/*']`, exactly like it does for the
+// bundled-Node tree. Rename to `vendor_modules` here; main/studio/process.ts
+// sets NODE_PATH to that dir at spawn time so `require('next')` still
+// resolves. Verified by 04-real-bootstrap.spec catching a "Cannot find
+// module 'next'" crash before this rename.
+console.log('[build-studio] (6/6) renaming node_modules → vendor_modules')
+const NM = join(DIST, 'node_modules')
+const VM = join(DIST, 'vendor_modules')
+if (existsSync(NM)) {
+  await rm(VM, { recursive: true, force: true })
+  await rename(NM, VM)
+}
 
 console.log(`[build-studio] done — dist-studio/ ready (${DIST})`)

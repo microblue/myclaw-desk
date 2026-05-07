@@ -87,11 +87,22 @@ class StudioProcess extends EventEmitter {
         }
       }
 
+      // Studio's deps (notably `next`) live under <studioDir>/vendor_modules
+      // because electron-builder's extraResources strips anything named
+      // `node_modules`. Tell Node to search there too — works in both prod
+      // (where vendor_modules is the only place) and dev (where node_modules
+      // is the canonical spot, vendor_modules may not exist).
+      const vendorModules = join(studioDir, 'vendor_modules')
+      const existingNodePath = process.env.NODE_PATH ?? ''
+      const sep = process.platform === 'win32' ? ';' : ':'
+      const nodePath = [vendorModules, existingNodePath].filter(Boolean).join(sep)
+
       const childEnv: NodeJS.ProcessEnv = {
         ...process.env,
         PORT: String(port),
         HOSTNAME: '127.0.0.1',
-        NODE_ENV: hasProdBuild ? 'production' : 'development'
+        NODE_ENV: hasProdBuild ? 'production' : 'development',
+        NODE_PATH: nodePath
       }
       // Sandbox: when a test sets MYCLAW_DESK_GATEWAY_PORT, point Studio at
       // that gateway instead of the default 18789. OPENCLAW_STATE_DIR is

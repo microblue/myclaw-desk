@@ -41,7 +41,12 @@ const required = [
   platform === 'win32'
     ? join(nodeRoot, 'vendor_modules', 'npm', 'bin', 'npm-cli.js')
     : join(nodeRoot, 'lib', 'vendor_modules', 'npm', 'bin', 'npm-cli.js'),
-  join(resourcesDir, 'studio', 'server', 'index.js')
+  join(resourcesDir, 'studio', 'server', 'index.js'),
+  // Studio's deps must survive electron-builder's extraResources stripping
+  // — see scripts/build-studio.mjs for the node_modules → vendor_modules
+  // rename. Without `next` reachable, server/index.js crashes on its first
+  // require() call (caught by 04-real-bootstrap, would otherwise ship).
+  join(resourcesDir, 'studio', 'vendor_modules', 'next', 'package.json')
 ]
 
 let ok = true
