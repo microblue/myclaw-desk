@@ -53,11 +53,7 @@ export function createSandbox(opts: SandboxOptions = {}): Sandbox {
     MYCLAW_DESK_DAEMON_MODE: 'managed', // never touch the host's systemd
     // Disable crash reporting from CI/dev sandboxes — we don't want test
     // failures filling the production reports table.
-    MYCLAW_DESK_DISABLE_REPORTS: '1',
-    // Belt + suspenders: MYCLAW_DESK_USERDATA already gates auto-update, but
-    // make the intent explicit so future env-handling refactors don't silently
-    // re-enable it for tests.
-    MYCLAW_DESK_DISABLE_AUTOUPDATE: '1'
+    MYCLAW_DESK_DISABLE_REPORTS: '1'
   }
   if (!opts.realOpenclaw) {
     // Default: point at the fake openclaw bin so tests don't depend on host

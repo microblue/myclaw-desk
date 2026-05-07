@@ -83,21 +83,9 @@ app.whenReady().then(() => {
   registerInstallReportIpc()
 
   // Background check for desktop updates. Doesn't gate launch — the bootstrap
-  // splash continues regardless. Skipped in dev (so iterating doesn't keep
-  // hitting GitHub's API), in sandbox tests (MYCLAW_DESK_USERDATA pinned to
-  // tmp), and when explicitly disabled.
-  if (
-    !is.dev &&
-    !process.env.MYCLAW_DESK_USERDATA &&
-    !process.env.MYCLAW_DESK_DISABLE_AUTOUPDATE
-  ) {
-    try {
-      initAutoUpdate()
-    } catch (err) {
-      // Never let updater init kill the main process before we even render.
-      console.error('[autoUpdate] init failed', err)
-    }
-  }
+  // splash continues regardless. Skipped in dev so iterating doesn't keep
+  // hitting GitHub's API.
+  if (!is.dev) initAutoUpdate()
 
   createWindow()
 
