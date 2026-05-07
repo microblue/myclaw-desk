@@ -8,6 +8,7 @@ import { registerInstallReportIpc } from './ipc/installReport'
 import { bootstrapper } from './openclaw/bootstrap'
 import { studio } from './studio/process'
 import { installReporter } from './installReporter'
+import { initAutoUpdate } from './autoUpdate'
 import type { BootstrapState } from '../shared/bootstrap'
 import type { StudioState } from '../shared/studio'
 
@@ -80,6 +81,12 @@ app.whenReady().then(() => {
   registerBootstrapIpc()
   registerStudioIpc()
   registerInstallReportIpc()
+
+  // Background-fetch updates so a v0.1.21 user picks up v0.1.22 via blockmap
+  // delta on next launch (~tens of MB instead of ~240MB). Internally gated
+  // on app.isPackaged + sandbox env vars; fully wrapped in try/catch so a
+  // bad updater state can never block the splash from rendering.
+  initAutoUpdate()
 
   createWindow()
 
