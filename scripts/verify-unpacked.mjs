@@ -46,7 +46,11 @@ const required = [
   // — see scripts/build-studio.mjs for the node_modules → vendor_modules
   // rename. Without `next` reachable, server/index.js crashes on its first
   // require() call (caught by 04-real-bootstrap, would otherwise ship).
-  join(resourcesDir, 'studio', 'vendor_modules', 'next', 'package.json')
+  join(resourcesDir, 'studio', 'vendor_modules', 'next', 'package.json'),
+  // Bundled openclaw — same node_modules → vendor_modules rename so the
+  // tree survives extraResources packaging. paths.ts looks here first
+  // before falling back to the legacy runtime-install path.
+  join(resourcesDir, 'openclaw', 'vendor_modules', 'openclaw', 'package.json')
 ]
 
 let ok = true

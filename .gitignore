@@ -12,3 +12,5 @@ playwright-report/
 resources/node/
 # Pruned studio production tree, populated by scripts/build-studio.mjs
 dist-studio/
+# Pre-installed openclaw bundle, populated by scripts/build-openclaw.mjs
+dist-openclaw/

@@ -1,5 +1,5 @@
 import { spawn } from 'child_process'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync, readFileSync, symlinkSync } from 'fs'
 import { mkdir, stat, writeFile } from 'fs/promises'
 import { EventEmitter } from 'events'
 import { dirname, join } from 'path'
@@ -108,15 +108,27 @@ class Bootstrapper extends EventEmitter {
         return this.state
       }
 
-      // Step 2: install OpenClaw (if needed).
+      // Step 2: locate openclaw. Three resolutions, in priority order:
+      //   1. MYCLAW_DESK_OPENCLAW_BIN env override (e2e / dev).
+      //   2. Bundled openclaw shipped with the installer (the prod path
+      //      since v0.1.17). This eliminates the runtime-install failure
+      //      surface entirely.
+      //   3. Legacy: the runtime npm-install dir, if a previous build had
+      //      already populated it. Falls through to installing if absent.
       const haveBinOverride = !!process.env.MYCLAW_DESK_OPENCLAW_BIN
+      const haveBundled = !!paths.bundledOpenclawDir
       const haveInstall = await fileExists(paths.installMarker)
       if (haveBinOverride) {
-        // E2E / dev override — skip install entirely; treat the override as
-        // the source of truth and report it under the openclaw gate.
         this.markCheck('openclaw', 'ok', 'env override')
+      } else if (haveBundled) {
+        const bundledVersion = this.detectVersionAt(
+          join(paths.bundledOpenclawDir, 'vendor_modules', 'openclaw')
+        )
+        this.markCheck('openclaw', 'ok', bundledVersion ? `${bundledVersion} (bundled)` : 'bundled')
       } else if (haveInstall) {
-        this.markCheck('openclaw', 'ok', this.detectInstalledVersion(paths.runtime))
+        this.markCheck('openclaw', 'ok', this.detectVersionAt(
+          join(paths.runtime, 'node_modules', 'openclaw')
+        ))
       } else {
         this.update({
           phase: 'preparing',
@@ -133,7 +145,9 @@ class Bootstrapper extends EventEmitter {
         this.markCheck('openclaw', 'active', `installing v${OPENCLAW_VERSION}`)
         await this.runNpmInstall()
         await writeFile(paths.installMarker, new Date().toISOString(), 'utf8')
-        this.markCheck('openclaw', 'ok', this.detectInstalledVersion(paths.runtime))
+        this.markCheck('openclaw', 'ok', this.detectVersionAt(
+          join(paths.runtime, 'node_modules', 'openclaw')
+        ))
       }
 
       // Step 3: confirm the resolved CLI entry point exists. After install
@@ -146,6 +160,14 @@ class Bootstrapper extends EventEmitter {
         throw new Error(
           `MyClaw engine not found at ${fresh.openclaw.existsAt}. Reinstall or rerun.`
         )
+      }
+
+      // Make `<bundle>/node_modules` resolvable for any ESM imports openclaw
+      // does internally (ESM module resolution intentionally ignores
+      // NODE_PATH and only walks parent node_modules dirs). Same junction
+      // trick we apply to the bundled studio in main/studio/process.ts.
+      if (fresh.bundledOpenclawDir) {
+        ensureVendorModulesSymlink(fresh.bundledOpenclawDir)
       }
 
       // Step 4: spawn managed gateway and wait for the port to listen.
@@ -298,11 +320,9 @@ class Bootstrapper extends EventEmitter {
     this.markCheck('studio', 'warn', 'Workspace entry not found — falling back to remote')
   }
 
-  private detectInstalledVersion(runtime: string): string | undefined {
+  private detectVersionAt(openclawPkgDir: string): string | undefined {
     try {
-      const pkg = JSON.parse(
-        readFileSync(join(runtime, 'node_modules', 'openclaw', 'package.json'), 'utf8')
-      )
+      const pkg = JSON.parse(readFileSync(join(openclawPkgDir, 'package.json'), 'utf8'))
       return typeof pkg.version === 'string' ? `v${pkg.version}` : undefined
     } catch {
       return undefined
@@ -429,6 +449,31 @@ async function fileExists(p: string): Promise<boolean> {
     return true
   } catch {
     return false
+  }
+}
+
+/**
+ * Make a `<dir>/node_modules` entry that resolves to `<dir>/vendor_modules`,
+ * so any ESM `import` from inside the bundled tree finds packages where
+ * Node expects them. electron-builder strips literally-named node_modules
+ * during packaging, so we create the link on the user's machine after
+ * install. junction on Windows: doesn't need the elevated symlink
+ * privilege; dir symlink on POSIX is the standard kind.
+ */
+function ensureVendorModulesSymlink(dir: string): void {
+  const link = join(dir, 'node_modules')
+  const target = join(dir, 'vendor_modules')
+  if (!existsSync(target) || existsSync(link)) return
+  try {
+    symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir')
+  } catch (err) {
+    installLogger.log({
+      source: 'bootstrap',
+      level: 'warn',
+      text: `Failed to symlink ${link} → ${target}: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    })
   }
 }
 

@@ -34,6 +34,13 @@ export interface OpenclawPaths {
   openclaw: OpenclawCommand
   /** Marker file written after a successful install. */
   installMarker: string
+  /**
+   * Read-only directory where the desktop installer pre-bundled openclaw
+   * (vendor_modules/openclaw/...). Empty when no bundled tree is present
+   * (dev / unpacked / forks without prepack:openclaw run). Set this means
+   * we can skip runtime npm install entirely.
+   */
+  bundledOpenclawDir: string
   /** TCP port the gateway should listen on. */
   gatewayPort: number
   /** ws://127.0.0.1:<gatewayPort> */
@@ -140,7 +147,39 @@ function resolveStateDir(): string {
   return join(app.getPath('home'), '.openclaw')
 }
 
-function resolveOpenclawCommand(runtime: string, nodeBin: string): OpenclawCommand {
+/**
+ * Where the bundled openclaw tree lives. dev: <repo>/dist-openclaw/, prod:
+ * <process.resourcesPath>/openclaw/. Returns empty string when the
+ * directory isn't present (forks / unfinished prepack).
+ */
+function resolveBundledOpenclawDir(): string {
+  const candidates = is.dev
+    ? [join(__dirname, '..', '..', 'dist-openclaw')]
+    : [join(process.resourcesPath, 'openclaw')]
+  for (const c of candidates) {
+    if (existsSync(join(c, 'vendor_modules', 'openclaw', 'package.json'))) return c
+  }
+  return ''
+}
+
+function readOpenclawJsBin(openclawPkgDir: string): string | null {
+  const pkgPath = join(openclawPkgDir, 'package.json')
+  if (!existsSync(pkgPath)) return null
+  try {
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+    if (typeof pkg.bin === 'string') return pkg.bin
+    if (pkg.bin && typeof pkg.bin.openclaw === 'string') return pkg.bin.openclaw
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+function resolveOpenclawCommand(
+  runtime: string,
+  bundledDir: string,
+  nodeBin: string
+): OpenclawCommand {
   // Test/dev override — point at any existing openclaw CLI on the host (the
   // e2e fake-openclaw is a Node shebang script). Spawn it directly; tests
   // run on Linux/macOS where shebangs work, and the Windows packaged spec
@@ -148,29 +187,30 @@ function resolveOpenclawCommand(runtime: string, nodeBin: string): OpenclawComma
   const env = process.env.MYCLAW_DESK_OPENCLAW_BIN
   if (env) return { cmd: env, prefixArgs: [], existsAt: env }
 
-  // Read openclaw's package.json to find its JS bin entry. Spawning
-  // `node <jsPath>` instead of going through `node_modules/.bin/openclaw(.cmd)`
-  // avoids the Windows .cmd-shim ENOENT trap and works identically on all
-  // platforms. Falls back to the unix shim path if package.json isn't there
-  // yet (pre-install) — that way `existsSync(existsAt)` still gates the
-  // install step correctly.
-  const pkgPath = join(runtime, 'node_modules', 'openclaw', 'package.json')
-  let jsRel: string | null = null
-  if (existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
-      if (typeof pkg.bin === 'string') jsRel = pkg.bin
-      else if (pkg.bin && typeof pkg.bin.openclaw === 'string') jsRel = pkg.bin.openclaw
-    } catch {
-      // ignore — fall back to shim path
+  // Bundled openclaw shipped with the installer. Preferred path —
+  // eliminates the runtime-install failure surface entirely (no npm,
+  // no network, no lifecycle scripts on the user's machine).
+  if (bundledDir) {
+    const pkgDir = join(bundledDir, 'vendor_modules', 'openclaw')
+    const jsRel = readOpenclawJsBin(pkgDir)
+    if (jsRel) {
+      const jsAbs = join(pkgDir, jsRel)
+      return { cmd: nodeBin, prefixArgs: [jsAbs], existsAt: jsAbs }
     }
   }
+
+  // Legacy / fallback: the user-runtime install path. Spawning
+  // `node <jsPath>` instead of through `node_modules/.bin/openclaw(.cmd)`
+  // avoids the Windows .cmd-shim ENOENT trap and works identically on all
+  // platforms. Falls back to the unix shim path if package.json isn't
+  // there yet (pre-install) — that way `existsSync(existsAt)` still gates
+  // the install step correctly.
+  const runtimePkgDir = join(runtime, 'node_modules', 'openclaw')
+  const jsRel = readOpenclawJsBin(runtimePkgDir)
   if (jsRel) {
-    const jsAbs = join(runtime, 'node_modules', 'openclaw', jsRel)
+    const jsAbs = join(runtimePkgDir, jsRel)
     return { cmd: nodeBin, prefixArgs: [jsAbs], existsAt: jsAbs }
   }
-  // Pre-install or malformed package.json: target the shim so the existsSync
-  // check correctly reports "not installed yet" and bootstrap runs npm install.
   const shim = join(runtime, 'node_modules', '.bin', isWin ? 'openclaw.cmd' : 'openclaw')
   return { cmd: nodeBin, prefixArgs: [], existsAt: shim }
 }
@@ -183,14 +223,16 @@ export function getPaths(): OpenclawPaths {
   const runtime = join(home, 'runtime')
   const bundled = resolveBundledNode()
   const { node, npm } = bundled ?? resolveSystemNode()
+  const bundledOpenclawDir = resolveBundledOpenclawDir()
   const gatewayPort = resolveGatewayPort()
   cached = {
     home,
     runtime,
     nodeBin: node,
     npmCli: npm,
-    openclaw: resolveOpenclawCommand(runtime, node),
+    openclaw: resolveOpenclawCommand(runtime, bundledOpenclawDir, node),
     installMarker: join(runtime, '.installed'),
+    bundledOpenclawDir,
     gatewayPort,
     gatewayUrl: `ws://127.0.0.1:${gatewayPort}`,
     stateDir: resolveStateDir()

@@ -11,6 +11,7 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!studio/**'
   - '!dist-studio/**'
+  - '!dist-openclaw/**'
   - '!resources/node/**'
   - '!tests/**'
   - '!playwright.config.ts'
@@ -30,6 +31,14 @@ extraResources:
   #   node scripts/build-studio.mjs
   - from: dist-studio/
     to: studio/
+    filter:
+      - '**/*'
+  # Bundled openclaw — preinstalled at desktop build time so users don't
+  # depend on `npm install` working on their machine at first launch
+  # (Windows ENOENT, lifecycle scripts, registry hiccups, etc.). Populate
+  # via: node scripts/build-openclaw.mjs
+  - from: dist-openclaw/
+    to: openclaw/
     filter:
       - '**/*'
 asarUnpack:

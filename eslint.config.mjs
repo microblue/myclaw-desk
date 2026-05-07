@@ -20,7 +20,9 @@ export default defineConfig(
       // `vendor_modules/` to dodge electron-builder's extraResources
       // filter, so eslint's default `**/node_modules` ignore no longer
       // covers npm's own source tree.
-      'resources/node/**'
+      'resources/node/**',
+      // Bundled openclaw tree (vendor_modules/ — same rename rationale).
+      'dist-openclaw'
     ]
   },
   tseslint.configs.recommended,
