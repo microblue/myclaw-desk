@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import * as net from 'net'
 import { existsSync, rmSync, symlinkSync } from 'fs'
-import { join } from 'path'
+import { dirname as pathDirname, join } from 'path'
 import { getPaths } from '../openclaw/paths'
 import { installLogger } from '../installLogger'
 import type { StudioState } from '../../shared/studio'
@@ -143,12 +143,26 @@ class StudioProcess extends EventEmitter {
       const sep = process.platform === 'win32' ? ';' : ':'
       const nodePath = [vendorModules, existingNodePath].filter(Boolean).join(sep)
 
+      // Same PATH fix as bootstrap/daemon: Studio's Next.js sometimes shells
+      // out (e.g. to `npm install` if it detects a missing TypeScript dep
+      // at runtime), which on Windows resolves through the user's PATH.
+      // Without our bundled node dir prepended, `spawn npm` ENOENT-crashes
+      // and Studio gets stuck logging the error but never serving
+      // requests — exactly the 'still spinning' symptom one user reported.
+      const nodeBinDir = pathDirname(node)
+      const pathKey =
+        process.platform === 'win32'
+          ? (Object.keys(process.env).find((k) => k.toLowerCase() === 'path') ?? 'Path')
+          : 'PATH'
+      const childPath = `${nodeBinDir}${sep}${process.env[pathKey] ?? ''}`
+
       const childEnv: NodeJS.ProcessEnv = {
         ...process.env,
         PORT: String(port),
         HOSTNAME: '127.0.0.1',
         NODE_ENV: hasProdBuild ? 'production' : 'development',
-        NODE_PATH: nodePath
+        NODE_PATH: nodePath,
+        [pathKey]: childPath
       }
       // Sandbox: when a test sets MYCLAW_DESK_GATEWAY_PORT, point Studio at
       // that gateway instead of the default 18789. OPENCLAW_STATE_DIR is

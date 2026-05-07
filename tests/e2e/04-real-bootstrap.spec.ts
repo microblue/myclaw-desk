@@ -83,11 +83,11 @@ test.describe('full-stack smoke (real openclaw + studio)', () => {
     let url = launched.window.url()
     while (Date.now() < deadline) {
       url = launched.window.url()
-      if (/^http:\/\/127\.0\.0\.1:\d+/.test(url)) break
+      if (/^http:\/\/(?:127\.0\.0\.1|localhost):\d+/.test(url)) break
       await new Promise((r) => setTimeout(r, 500))
     }
 
-    if (!/^http:\/\/127\.0\.0\.1:\d+/.test(url)) {
+    if (!/^http:\/\/(?:127\.0\.0\.1|localhost):\d+/.test(url)) {
       // The window URL never swapped — surface what Studio was doing so the
       // CI log says *why* instead of just "URL didn't match". We can still
       // hit window.api here because the swap never happened.
