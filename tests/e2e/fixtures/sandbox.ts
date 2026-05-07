@@ -22,12 +22,21 @@ export interface Sandbox {
 let nextPortOffset = 0
 const BASE_GATEWAY_PORT = 28789
 
+export interface SandboxOptions {
+  /**
+   * If true, skip the fake-openclaw override so the bootstrap actually does
+   * `npm install openclaw@<pinned>` and starts the real gateway + Studio.
+   * Used by the full-stack CI smoke (tests/e2e/04-real-bootstrap.spec.ts).
+   */
+  realOpenclaw?: boolean
+}
+
 /**
  * Create an isolated sandbox under /tmp/myclaw-test-XXXXXX/. Each call returns
  * a fresh directory and a fresh gateway port (incremented), so multiple test
  * files running serially don't collide.
  */
-export function createSandbox(): Sandbox {
+export function createSandbox(opts: SandboxOptions = {}): Sandbox {
   const root = mkdtempSync(join(tmpdir(), 'myclaw-test-'))
   const userData = join(root, 'userdata')
   const openclawState = join(root, 'openclaw')
@@ -42,10 +51,15 @@ export function createSandbox(): Sandbox {
     OPENCLAW_STATE_DIR: openclawState,
     MYCLAW_DESK_GATEWAY_PORT: String(gatewayPort),
     MYCLAW_DESK_DAEMON_MODE: 'managed', // never touch the host's systemd
-    // Default to the fake openclaw bin so tests don't depend on host having
-    // real openclaw installed (and don't trigger our slow npm install path).
-    // Override via opts.openclawBin / direct env mutation for full-stack tests.
-    MYCLAW_DESK_OPENCLAW_BIN: FAKE_OPENCLAW_BIN
+    // Disable crash reporting from CI/dev sandboxes — we don't want test
+    // failures filling the production reports table.
+    MYCLAW_DESK_DISABLE_REPORTS: '1'
+  }
+  if (!opts.realOpenclaw) {
+    // Default: point at the fake openclaw bin so tests don't depend on host
+    // having real openclaw installed (and don't trigger our slow npm install
+    // path). The full-stack spec opts out of this.
+    env.MYCLAW_DESK_OPENCLAW_BIN = FAKE_OPENCLAW_BIN
   }
 
   let cleaned = false

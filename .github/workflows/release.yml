@@ -91,6 +91,16 @@ jobs:
         env:
           MYCLAW_DESK_SKIP_BUILD: '1'
 
+      # Full-stack smoke against the real openclaw npm package and the real
+      # embedded Studio. Catches problems the fake-gateway test can't see
+      # (npm lifecycle scripts, openclaw config gates, Studio Next.js boot,
+      # window URL swap). Slow (~3 minutes), Linux-only for now.
+      - name: E2E real bootstrap + Studio (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a pnpm exec playwright test 04-real-bootstrap
+        env:
+          MYCLAW_DESK_SKIP_BUILD: '1'
+
       - name: Upload Playwright report on failure
         if: failure() && matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
