@@ -82,6 +82,12 @@ const removeBasenames = new Set(
   ].map((s) => s.toLowerCase())
 )
 
+// Dir names removed unconditionally. KEPT VERY SHORT on purpose: lots of
+// npm packages ship real runtime code under directories with names that
+// look like documentation/tests at first glance (e.g. yaml/dist/doc/ has
+// the actual Document class). Only include names that are universally
+// build-artifact / metadata in the npm ecosystem. v0.1.18 hit this with
+// `doc` in the list and the openclaw gateway exit-1'd at runtime.
 const removeDirs = new Set(
   [
     '__tests__',
@@ -90,21 +96,12 @@ const removeDirs = new Set(
     '.cache',
     '.circleci',
     '.github',
+    '.gitlab',
+    '.husky',
     '.idea',
     '.nyc_output',
     '.vscode',
-    'bench',
-    'benchmark',
-    'benchmarks',
-    'coverage',
-    'doc',
-    'docs',
-    'example',
-    'examples',
-    'samples',
-    'test',
-    'tests',
-    'website'
+    'coverage'
   ].map((s) => s.toLowerCase())
 )
 
