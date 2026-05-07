@@ -104,13 +104,26 @@ console.log(
 )
 runNpm('rebuild', 'better-sqlite3', '--update-binary')
 
+// Next.js's NFT bundler writes hashed copies of traced packages under
+// .next/node_modules/<pkg>-<hash>/. On Windows these are typically
+// junctions/symlinks back into ../../node_modules/<pkg>; once we rename
+// the outer node_modules below they dangle, and electron-builder's 7za
+// step ("System cannot find the path specified") fails the whole build.
+// We don't need them at runtime — Next's server already inlined the
+// references during build — so wipe the dir before renaming.
+const NEXT_NM = join(DIST, '.next', 'node_modules')
+if (existsSync(NEXT_NM)) {
+  console.log('[build-studio] (6/7) removing .next/node_modules (NFT symlink cache)')
+  await rm(NEXT_NM, { recursive: true, force: true })
+}
+
 // electron-builder's extraResources strips anything literally named
 // `node_modules` even with `filter: ['**/*']`, exactly like it does for the
 // bundled-Node tree. Rename to `vendor_modules` here; main/studio/process.ts
 // sets NODE_PATH to that dir at spawn time so `require('next')` still
 // resolves. Verified by 04-real-bootstrap.spec catching a "Cannot find
 // module 'next'" crash before this rename.
-console.log('[build-studio] (6/6) renaming node_modules → vendor_modules')
+console.log('[build-studio] (7/7) renaming node_modules → vendor_modules')
 const NM = join(DIST, 'node_modules')
 const VM = join(DIST, 'vendor_modules')
 if (existsSync(NM)) {
