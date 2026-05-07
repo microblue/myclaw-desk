@@ -91,7 +91,7 @@ await writeFile(
 const pathSep = process.platform === 'win32' ? ';' : ':'
 const pathKey =
   process.platform === 'win32'
-    ? Object.keys(process.env).find((k) => k.toLowerCase() === 'path') ?? 'Path'
+    ? (Object.keys(process.env).find((k) => k.toLowerCase() === 'path') ?? 'Path')
     : 'PATH'
 const installEnv = {
   ...process.env,
@@ -101,13 +101,22 @@ const installEnv = {
 }
 
 console.log(`[build-openclaw] (2/3) npm install openclaw@${VERSION} (this takes ~30s)`)
+execFileSync(BUNDLED_NODE, [BUNDLED_NPM_CLI, 'install', '--no-audit', '--no-fund', '--omit=dev'], {
+  cwd: DIST,
+  stdio: 'inherit',
+  env: installEnv
+})
+
+console.log('[build-openclaw] (3/4) pruning dev cruft (markdown, tests, sourcemaps, .ts)')
 execFileSync(
   BUNDLED_NODE,
-  [BUNDLED_NPM_CLI, 'install', '--no-audit', '--no-fund', '--omit=dev'],
-  { cwd: DIST, stdio: 'inherit', env: installEnv }
+  [join(ROOT, 'scripts', 'prune-bundle.mjs'), join(DIST, 'node_modules')],
+  {
+    stdio: 'inherit'
+  }
 )
 
-console.log('[build-openclaw] (3/3) renaming node_modules → vendor_modules')
+console.log('[build-openclaw] (4/4) renaming node_modules → vendor_modules')
 const NM = join(DIST, 'node_modules')
 const VM = join(DIST, 'vendor_modules')
 if (existsSync(NM)) {

@@ -128,12 +128,16 @@ if (existsSync(NEXT_NM)) {
   await rm(NEXT_NM, { recursive: true, force: true })
 }
 
+// Strip dev cruft from the studio dep tree — see scripts/prune-bundle.mjs.
+console.log('[build-studio] (7/8) pruning dev cruft from node_modules')
+execFileSync(BUNDLED_NODE, [join(ROOT, 'scripts', 'prune-bundle.mjs'), NM], { stdio: 'inherit' })
+
 // electron-builder's extraResources strips anything literally named
 // `node_modules` even with `filter: ['**/*']`, exactly like it does for the
 // bundled-Node tree. Rename to `vendor_modules` here; main/studio/process.ts
 // sets NODE_PATH to that dir at spawn time so `require('next')` still
 // resolves.
-console.log('[build-studio] (7/7) renaming node_modules → vendor_modules')
+console.log('[build-studio] (8/8) renaming node_modules → vendor_modules')
 const VM = join(DIST, 'vendor_modules')
 if (existsSync(NM)) {
   await rm(VM, { recursive: true, force: true })

@@ -126,9 +126,11 @@ class Bootstrapper extends EventEmitter {
         )
         this.markCheck('openclaw', 'ok', bundledVersion ? `${bundledVersion} (bundled)` : 'bundled')
       } else if (haveInstall) {
-        this.markCheck('openclaw', 'ok', this.detectVersionAt(
-          join(paths.runtime, 'node_modules', 'openclaw')
-        ))
+        this.markCheck(
+          'openclaw',
+          'ok',
+          this.detectVersionAt(join(paths.runtime, 'node_modules', 'openclaw'))
+        )
       } else {
         this.update({
           phase: 'preparing',
@@ -145,9 +147,11 @@ class Bootstrapper extends EventEmitter {
         this.markCheck('openclaw', 'active', `installing v${OPENCLAW_VERSION}`)
         await this.runNpmInstall()
         await writeFile(paths.installMarker, new Date().toISOString(), 'utf8')
-        this.markCheck('openclaw', 'ok', this.detectVersionAt(
-          join(paths.runtime, 'node_modules', 'openclaw')
-        ))
+        this.markCheck(
+          'openclaw',
+          'ok',
+          this.detectVersionAt(join(paths.runtime, 'node_modules', 'openclaw'))
+        )
       }
 
       // Step 3: confirm the resolved CLI entry point exists. After install
