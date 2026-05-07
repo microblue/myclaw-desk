@@ -64,9 +64,20 @@ export async function startManagedGateway(
       ? (Object.keys(process.env).find((k) => k.toLowerCase() === 'path') ?? 'Path')
       : 'PATH'
 
+  // `--allow-unconfigured` skips the auth-config gate. Without it openclaw
+  // exits 78 with "Missing config. Run `openclaw setup`…" — fine for a
+  // CLI install where the user has time to walk through setup, fatal for
+  // a desktop where Studio is the setup UI. Local-only desktop sessions
+  // don't need a remote auth profile.
   const child = spawn(
     opts.openclaw.cmd,
-    [...opts.openclaw.prefixArgs, 'gateway', '--port', String(opts.port)],
+    [
+      ...opts.openclaw.prefixArgs,
+      'gateway',
+      '--port',
+      String(opts.port),
+      '--allow-unconfigured'
+    ],
     {
       env: {
         ...process.env,
