@@ -3,7 +3,13 @@ import * as net from 'net'
 import { dirname } from 'path'
 import type { OpenclawCommand } from './paths'
 
-const READY_TIMEOUT_MS = 30_000
+// 30s was not enough for first-run on Windows: openclaw generates and
+// writes an auth token on first launch, and Windows Defender's real-time
+// scan of the freshly-installed 556-package node_modules tree pushes
+// that single write past 25s. Subsequent launches are fast because the
+// token is already in config. 120s gives generous headroom for the slow
+// path without making the failure mode unbearable.
+const READY_TIMEOUT_MS = 120_000
 const READY_POLL_INTERVAL_MS = 250
 
 /** Probe whether a TCP listener is up at host:port. Used both to detect an
