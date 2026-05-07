@@ -1,6 +1,6 @@
 {
   "name": "myclaw-desk",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "MyClaw.One Desktop — desktop client for myclaw.one OpenClaw deployments",
   "main": "./out/main/index.js",
   "author": "MyClaw.One",
