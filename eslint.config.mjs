@@ -9,7 +9,20 @@ export default defineConfig(
   // `studio/` is a vendored Next.js app with its own prettier/eslint conventions
   // (single quotes, no semicolons) — it has its own `next lint`. `dist-studio/`
   // is the staged production tree we ship; never lint generated output.
-  { ignores: ['**/node_modules', '**/dist', '**/out', 'studio', 'dist-studio'] },
+  {
+    ignores: [
+      '**/node_modules',
+      '**/dist',
+      '**/out',
+      'studio',
+      'dist-studio',
+      // Bundled Node 24 runtime. We renamed its `node_modules/` to
+      // `vendor_modules/` to dodge electron-builder's extraResources
+      // filter, so eslint's default `**/node_modules` ignore no longer
+      // covers npm's own source tree.
+      'resources/node/**'
+    ]
+  },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],
