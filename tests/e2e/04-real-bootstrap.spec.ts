@@ -1,9 +1,12 @@
 import { test, expect } from '@playwright/test'
+import { existsSync, readFileSync } from 'fs'
 import * as net from 'net'
+import { join } from 'path'
 import { createSandbox, type Sandbox } from './fixtures/sandbox'
 import { launchSandboxedApp, type LaunchedApp } from './fixtures/electronApp'
 import { packagedBinaryPath } from './fixtures/packaged'
 import type { BootstrapState, BootstrapCheck } from '../../src/shared/bootstrap'
+import type { StudioState } from '../../src/shared/studio'
 
 // Full-stack smoke. Runs the packaged binary against a real `npm install
 // openclaw@<pinned>`, real managed gateway, real embedded Studio. This is
@@ -83,9 +86,20 @@ test.describe('full-stack smoke (real openclaw + studio)', () => {
       if (/^http:\/\/127\.0\.0\.1:\d+/.test(url)) break
       await new Promise((r) => setTimeout(r, 500))
     }
-    expect(url, 'window URL should be the swapped Studio URL').toMatch(
-      /^http:\/\/127\.0\.0\.1:\d+/
-    )
+
+    if (!/^http:\/\/127\.0\.0\.1:\d+/.test(url)) {
+      // The window URL never swapped — surface what Studio was doing so the
+      // CI log says *why* instead of just "URL didn't match". We can still
+      // hit window.api here because the swap never happened.
+      const studio = await safeStudioState(launched.window)
+      const installLog = readInstallLogTail(sandbox)
+      throw new Error(
+        `window URL never changed to a Studio URL within ${REAL_BOOT_TIMEOUT_MS / 1000}s.\n` +
+          `Last URL: ${url}\n` +
+          `Studio state: ${JSON.stringify(studio, null, 2)}\n` +
+          `Install log tail (last 80 lines):\n${installLog}`
+      )
+    }
 
     // Studio is HTTP — fetch from the test runner directly. We only require
     // that the server responds; Studio's exact HTML isn't pinned.
@@ -107,6 +121,36 @@ async function isPortListening(port: number, host = '127.0.0.1'): Promise<boolea
     })
     sock.once('error', () => resolve(false))
   })
+}
+
+async function safeStudioState(
+  window: LaunchedApp['window']
+): Promise<StudioState | { error: string }> {
+  try {
+    return (await window.evaluate(() =>
+      window.api?.studio.getState()
+    )) as StudioState
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+function readInstallLogTail(sandbox: Sandbox, lines = 80): string {
+  const candidates = [
+    join(sandbox.userData, 'install.log'),
+    // Older layout in case the app rolls userData layout in future:
+    join(sandbox.userData, 'logs', 'install.log')
+  ]
+  for (const p of candidates) {
+    if (!existsSync(p)) continue
+    try {
+      const all = readFileSync(p, 'utf8').split(/\r?\n/).filter(Boolean)
+      return all.slice(-lines).join('\n')
+    } catch (e) {
+      return `(failed to read ${p}: ${e instanceof Error ? e.message : String(e)})`
+    }
+  }
+  return '(no install.log present in sandbox)'
 }
 
 async function fetchOk(url: string): Promise<boolean> {
