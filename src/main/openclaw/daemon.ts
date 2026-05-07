@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process'
 import * as net from 'net'
+import { dirname } from 'path'
 import type { OpenclawCommand } from './paths'
 
 const READY_TIMEOUT_MS = 30_000
@@ -53,11 +54,25 @@ export interface StartManagedGatewayOptions {
 export async function startManagedGateway(
   opts: StartManagedGatewayOptions
 ): Promise<ManagedGatewayHandle> {
+  // Inject the bundled node dir into PATH so any child process the gateway
+  // spawns (e.g. cmd.exe /c node ...) finds our node.exe on Windows where
+  // the user's system PATH typically has no node at all.
+  const nodeBinDir = dirname(opts.openclaw.cmd)
+  const pathSep = process.platform === 'win32' ? ';' : ':'
+  const pathKey =
+    process.platform === 'win32'
+      ? (Object.keys(process.env).find((k) => k.toLowerCase() === 'path') ?? 'Path')
+      : 'PATH'
+
   const child = spawn(
     opts.openclaw.cmd,
     [...opts.openclaw.prefixArgs, 'gateway', '--port', String(opts.port)],
     {
-      env: { ...process.env, OPENCLAW_STATE_DIR: opts.stateDir },
+      env: {
+        ...process.env,
+        [pathKey]: `${nodeBinDir}${pathSep}${process.env[pathKey] ?? ''}`,
+        OPENCLAW_STATE_DIR: opts.stateDir
+      },
       stdio: ['ignore', 'pipe', 'pipe']
     }
   )

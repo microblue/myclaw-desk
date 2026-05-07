@@ -2,7 +2,7 @@ import { spawn } from 'child_process'
 import { existsSync, readFileSync } from 'fs'
 import { mkdir, stat, writeFile } from 'fs/promises'
 import { EventEmitter } from 'events'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { getPaths, resetPathsCache } from './paths'
 import { isPortListening, startManagedGateway, type ManagedGatewayHandle } from './daemon'
 import { installLogger } from '../installLogger'
@@ -311,10 +311,30 @@ class Bootstrapper extends EventEmitter {
       pkgSpec
     ]
 
+    // Prepend the bundled node directory to PATH so npm's lifecycle
+    // scripts (preinstall, postinstall) — which npm spawns via
+    // `cmd.exe /c node …` on Windows — can find a node binary. Without
+    // this, npm install dies on the openclaw package's preinstall hook
+    // with "'node' is not recognized as an internal or external command".
+    // Also set npm_node_execpath so npm itself uses our bundled binary
+    // for any internal child-process work.
+    const nodeBinDir = dirname(paths.nodeBin)
+    const pathSep = process.platform === 'win32' ? ';' : ':'
+    const pathKey =
+      process.platform === 'win32'
+        ? (Object.keys(process.env).find((k) => k.toLowerCase() === 'path') ?? 'Path')
+        : 'PATH'
+    const childEnv = {
+      ...process.env,
+      [pathKey]: `${nodeBinDir}${pathSep}${process.env[pathKey] ?? ''}`,
+      npm_node_execpath: paths.nodeBin,
+      npm_config_yes: 'true'
+    }
+
     return new Promise<void>((resolve, reject) => {
       const child = spawn(cmd, argv, {
         cwd: paths.runtime,
-        env: { ...process.env, npm_config_yes: 'true' },
+        env: childEnv,
         stdio: ['ignore', 'pipe', 'pipe']
       })
 
