@@ -7,9 +7,13 @@ import type { BootstrapState } from '../shared/bootstrap'
 import type { InstallReportState } from '../shared/installReport'
 
 // Override at runtime via env (tests + dev). Production uses the public
-// MyClaw.One API.
+// MyClaw.One API. The `api.` subdomain has no DNS record — production
+// reverse-proxies /api/* on the apex to the Hono backend. v0.1.0–v0.1.8
+// shipped with `api.myclaw.one` and every crash report ENOTFOUND'd, so
+// the install_reports table sat empty regardless of how many installs
+// failed.
 const REPORT_ENDPOINT =
-  process.env.MYCLAW_DESK_REPORT_ENDPOINT || 'https://api.myclaw.one/install-reports'
+  process.env.MYCLAW_DESK_REPORT_ENDPOINT || 'https://myclaw.one/api/install-reports'
 
 const REPORT_TIMEOUT_MS = 15_000
 
