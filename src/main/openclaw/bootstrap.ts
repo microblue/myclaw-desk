@@ -174,6 +174,12 @@ class Bootstrapper extends EventEmitter {
         ensureVendorModulesSymlink(fresh.bundledOpenclawDir)
       }
 
+      // Seed a default openclaw.json on first run so the gateway uses our
+      // bundled OpenRouter key (rather than its hardcoded openai/gpt-5.5
+      // default, which fails with "No API key for openai" since we only
+      // inject OPENROUTER_API_KEY). No-op if the user already has a config.
+      await ensureDefaultConfig(fresh.stateDir)
+
       // Step 4: spawn managed gateway and wait for the port to listen.
       this.update({
         phase: 'starting-gateway',
@@ -477,6 +483,46 @@ function ensureVendorModulesSymlink(dir: string): void {
       text: `Failed to symlink ${link} → ${target}: ${
         err instanceof Error ? err.message : String(err)
       }`
+    })
+  }
+}
+
+/**
+ * Default openclaw model. We pin to a Claude family route on OpenRouter so
+ * the bundled OPENROUTER_API_KEY actually resolves a working provider.
+ * openclaw's hardcoded fallback is "openai/gpt-5.5", which would require an
+ * OPENAI_API_KEY we don't bundle and produces "No API key for openai" at
+ * chat time — silently broken from the user's POV.
+ */
+const DEFAULT_MODEL_PRIMARY = 'openrouter/anthropic/claude-haiku-4.5'
+
+/**
+ * Write a minimal openclaw.json into the state dir on first run so the
+ * gateway points at our bundled-key provider out of the box. No-op if a
+ * config already exists — we never overwrite user customization.
+ */
+async function ensureDefaultConfig(stateDir: string): Promise<void> {
+  const configPath = join(stateDir, 'openclaw.json')
+  if (await fileExists(configPath)) return
+  await mkdir(stateDir, { recursive: true })
+  const seed = {
+    agents: {
+      defaults: {
+        model: { primary: DEFAULT_MODEL_PRIMARY }
+      }
+    }
+  }
+  try {
+    await writeFile(configPath, JSON.stringify(seed, null, 2) + '\n', 'utf8')
+    installLogger.log({
+      source: 'bootstrap',
+      text: `Seeded default config at ${configPath} (model: ${DEFAULT_MODEL_PRIMARY})`
+    })
+  } catch (err) {
+    installLogger.log({
+      source: 'bootstrap',
+      level: 'warn',
+      text: `Failed to seed ${configPath}: ${err instanceof Error ? err.message : String(err)}`
     })
   }
 }
