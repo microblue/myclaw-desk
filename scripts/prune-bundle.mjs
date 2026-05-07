@@ -105,7 +105,12 @@ const removeDirs = new Set(
   ].map((s) => s.toLowerCase())
 )
 
-const removeExts = new Set(['.md', '.markdown', '.flow', '.coffee', '.lock', '.tsbuildinfo'])
+// .md / .markdown are NOT in this set: openclaw ships runtime template
+// files like docs/reference/templates/AGENTS.md that the heartbeat check
+// reads at runtime. Stripping them tripped v0.1.22's heartbeat with
+// "Missing workspace template: AGENTS.md". Lossy savings (~few MB) wasn't
+// worth the correctness regression.
+const removeExts = new Set(['.flow', '.coffee', '.lock', '.tsbuildinfo'])
 
 // Sourcemaps + .ts files. We strip both — at runtime Node only needs the
 // transpiled .js / .cjs. (.d.ts could in principle be useful for tooling
