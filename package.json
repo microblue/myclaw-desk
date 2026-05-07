@@ -1,6 +1,6 @@
 {
   "name": "myclaw-desk",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "MyClaw.One Desktop — desktop client for myclaw.one OpenClaw deployments",
   "main": "./out/main/index.js",
   "author": "MyClaw.One",
@@ -29,7 +29,8 @@
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
-    "@electron-toolkit/utils": "^4.0.0"
+    "@electron-toolkit/utils": "^4.0.0",
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
