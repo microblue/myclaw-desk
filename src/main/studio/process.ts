@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { EventEmitter } from 'events'
 import * as net from 'net'
-import { existsSync, rmSync } from 'fs'
+import { existsSync, rmSync, symlinkSync } from 'fs'
 import { join } from 'path'
 import { getPaths } from '../openclaw/paths'
 import { installLogger } from '../installLogger'
@@ -107,10 +107,38 @@ class StudioProcess extends EventEmitter {
 
       // Studio's deps (notably `next`) live under <studioDir>/vendor_modules
       // because electron-builder's extraResources strips anything named
-      // `node_modules`. Tell Node to search there too — works in both prod
-      // (where vendor_modules is the only place) and dev (where node_modules
-      // is the canonical spot, vendor_modules may not exist).
+      // `node_modules` at packaging time. Two complementary fallbacks for
+      // resolving them at runtime:
+      //   - NODE_PATH=<studioDir>/vendor_modules — covers CJS require()
+      //   - <studioDir>/node_modules → vendor_modules symlink — covers ESM
+      //     `import` (which intentionally ignores NODE_PATH and only walks
+      //     parent node_modules dirs). Next 16's Turbopack runtime does ESM
+      //     imports of NFT-hashed packages like ws-24bb32dcb9424f99, so
+      //     without this Studio crashed on first request. Symlink is
+      //     created on user's machine post-install since electron-builder
+      //     would otherwise strip it during packaging.
       const vendorModules = join(studioDir, 'vendor_modules')
+      const nodeModulesLink = join(studioDir, 'node_modules')
+      if (existsSync(vendorModules) && !existsSync(nodeModulesLink)) {
+        try {
+          // 'junction' on Windows doesn't require the elevated symlink
+          // privilege; 'dir' on POSIX is the standard kind.
+          symlinkSync(
+            vendorModules,
+            nodeModulesLink,
+            process.platform === 'win32' ? 'junction' : 'dir'
+          )
+        } catch (err) {
+          installLogger.log({
+            source: 'studio',
+            level: 'warn',
+            text: `Failed to symlink node_modules → vendor_modules: ${
+              err instanceof Error ? err.message : String(err)
+            } — falling back to NODE_PATH only`
+          })
+        }
+      }
+
       const existingNodePath = process.env.NODE_PATH ?? ''
       const sep = process.platform === 'win32' ? ';' : ':'
       const nodePath = [vendorModules, existingNodePath].filter(Boolean).join(sep)
