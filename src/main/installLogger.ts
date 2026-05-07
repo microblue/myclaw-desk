@@ -10,20 +10,12 @@ const MAX_LINE_BYTES = 4096
 class InstallLogger extends EventEmitter {
   private buffer: InstallLogLine[] = []
   private fileStream: WriteStream | null = null
-  private logFile: string
-
-  constructor() {
-    super()
-    // userData is sandbox-aware (overridden by MYCLAW_DESK_USERDATA in tests),
-    // so the log file follows the sandbox automatically.
-    const dir = app.getPath('userData')
-    try {
-      mkdirSync(dir, { recursive: true })
-    } catch {
-      // best-effort
-    }
-    this.logFile = join(dir, 'install.log')
-  }
+  // Resolved lazily on first write so we pick up app.setPath('userData', …)
+  // — main/index.ts redirects userData via MYCLAW_DESK_USERDATA before
+  // app.whenReady, but module import order means this class is constructed
+  // before that redirect runs. Eager resolution captured the unsandboxed
+  // ~/.config/<app>/install.log; lazy resolution sees the sandbox path.
+  private logFile: string | null = null
 
   /**
    * Append a structured line. Ignores empty / whitespace-only text. Truncates
@@ -61,15 +53,27 @@ class InstallLogger extends EventEmitter {
   }
 
   /** Path to the persisted log — exposed so the renderer can show it / let
-   * the user open it. */
+   * the user open it. Resolves lazily, see logFile field comment. */
   getLogFile(): string {
+    return this.resolveLogFile()
+  }
+
+  private resolveLogFile(): string {
+    if (this.logFile) return this.logFile
+    const dir = app.getPath('userData')
+    try {
+      mkdirSync(dir, { recursive: true })
+    } catch {
+      // best-effort
+    }
+    this.logFile = join(dir, 'install.log')
     return this.logFile
   }
 
   private appendToFile(line: InstallLogLine): void {
     if (!this.fileStream) {
       try {
-        this.fileStream = createWriteStream(this.logFile, { flags: 'a' })
+        this.fileStream = createWriteStream(this.resolveLogFile(), { flags: 'a' })
         this.fileStream.on('error', (err) => {
           console.warn('[installLogger] file stream error', err)
           this.fileStream = null
