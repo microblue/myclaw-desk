@@ -24,7 +24,6 @@ import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { rm, cp, mkdir, rename, readdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
@@ -95,11 +94,39 @@ runNpmIn(DIST, 'ci', '--no-audit', '--no-fund')
 console.log('[build-studio] (3/8) running next build (output: standalone)…')
 runNpmIn(DIST, 'run', 'build')
 
-const STANDALONE = join(DIST, '.next', 'standalone')
-if (!existsSync(STANDALONE)) {
+const STANDALONE_ROOT = join(DIST, '.next', 'standalone')
+if (!existsSync(STANDALONE_ROOT)) {
   console.error(
-    `[build-studio] expected standalone tree at ${STANDALONE} — did studio/next.config.js opt out of output:'standalone'?`
+    `[build-studio] expected standalone tree at ${STANDALONE_ROOT} — did studio/next.config.js opt out of output:'standalone'?`
   )
+  process.exit(1)
+}
+
+// Belt-and-suspenders for the monorepo trace gotcha: even with
+// outputFileTracingRoot pinned in next.config.js, if anything ever drifts
+// (a stray pnpm-workspace.yaml at the repo root, a future Next version
+// changing defaults), standalone might still nest under the workspace
+// path. Walk down until we find the dir that actually contains server.js
+// — that's our real standalone root.
+const STANDALONE = await (async () => {
+  let cur = STANDALONE_ROOT
+  for (let i = 0; i < 12; i++) {
+    if (existsSync(join(cur, 'server.js'))) return cur
+    const entries = await readdir(cur, { withFileTypes: true })
+    const dirs = entries.filter((e) => e.isDirectory())
+    if (dirs.length === 1) {
+      cur = join(cur, dirs[0].name)
+      continue
+    }
+    break
+  }
+  return cur
+})()
+if (STANDALONE !== STANDALONE_ROOT) {
+  console.log(`[build-studio] standalone server.js is at ${STANDALONE} (descended from root)`)
+}
+if (!existsSync(join(STANDALONE, 'server.js'))) {
+  console.error(`[build-studio] no server.js found under ${STANDALONE_ROOT} — standalone build malformed`)
   process.exit(1)
 }
 
@@ -111,22 +138,31 @@ const PUBLIC_DST = join(STANDALONE, 'public')
 if (existsSync(STATIC_SRC)) await cp(STATIC_SRC, STATIC_DST, { recursive: true, dereference: true })
 if (existsSync(PUBLIC_SRC)) await cp(PUBLIC_SRC, PUBLIC_DST, { recursive: true, dereference: true })
 
-// Native modules: rebuild better-sqlite3 inside standalone/node_modules so
-// the prebuilt binary matches our bundled Node ABI. Without this we'd ship
-// a binary built for the host's Node and the user gets a
-// NODE_MODULE_VERSION mismatch on first launch.
+// Native + serverExternalPackages: Next standalone TRACES dependencies but
+// our `serverExternalPackages: ["ws", "better-sqlite3"]` config tells Next
+// NOT to inline these into the bundle — Next assumes they'll be available
+// at runtime, but doesn't itself put them into standalone/node_modules.
+// Copy them in from the full install in DIST/node_modules. Then rebuild
+// better-sqlite3 against the bundled Node ABI.
 const STANDALONE_NM = join(STANDALONE, 'node_modules')
+await mkdir(STANDALONE_NM, { recursive: true })
+const EXTERNAL_PKGS = ['ws', 'better-sqlite3']
+console.log(`[build-studio] (5/8) backfilling external pkgs into standalone: ${EXTERNAL_PKGS.join(', ')}`)
+for (const name of EXTERNAL_PKGS) {
+  const src = join(DIST, 'node_modules', name)
+  const dst = join(STANDALONE_NM, name)
+  if (!existsSync(src)) {
+    console.warn(`[build-studio] WARN: ${name} not in DIST/node_modules — Studio runtime may fail`)
+    continue
+  }
+  if (existsSync(dst)) await rm(dst, { recursive: true, force: true })
+  await cp(src, dst, { recursive: true, dereference: true })
+}
 if (existsSync(join(STANDALONE_NM, 'better-sqlite3'))) {
   console.log(
-    `[build-studio] (5/8) rebuilding better-sqlite3 against bundled Node ${bundledNodeVersion}…`
+    `[build-studio]      rebuilding better-sqlite3 against bundled Node ${bundledNodeVersion}…`
   )
   runNpmIn(STANDALONE, 'rebuild', 'better-sqlite3', '--update-binary')
-} else {
-  // Standalone trace can sometimes miss native modules — bail loudly so
-  // the user sees the gap at build time, not at runtime.
-  console.warn(
-    '[build-studio] WARN: better-sqlite3 not present in standalone/node_modules/. Studio runtime may fail.'
-  )
 }
 
 // Next 16's Turbopack writes hashed-name packages under
@@ -135,15 +171,12 @@ if (existsSync(join(STANDALONE_NM, 'better-sqlite3'))) {
 // special handling — the trace already covered them.
 
 console.log('[build-studio] (6/8) flattening standalone → dist-studio root')
-// Move standalone tree out, wipe dist-studio, move it back in. Avoids
-// holding ~1GB of source + .next in memory or relying on rename across
-// filesystems.
-const STAGE = await (async () => {
-  const p = join(tmpdir(), `myclaw-studio-stage-${process.pid}`)
-  await rm(p, { recursive: true, force: true })
-  await mkdir(p, { recursive: true })
-  return p
-})()
+// Move standalone tree out, wipe dist-studio, move it back in. Stage on
+// the *same filesystem* as DIST (workspace) so rename() doesn't EXDEV on
+// Windows, where tmpdir() is C:\ but the workspace is D:\.
+const STAGE = join(ROOT, '.dist-studio-stage')
+await rm(STAGE, { recursive: true, force: true })
+await mkdir(STAGE, { recursive: true })
 try {
   for (const entry of await readdir(STANDALONE)) {
     await rename(join(STANDALONE, entry), join(STAGE, entry))

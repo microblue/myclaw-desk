@@ -133,18 +133,71 @@ async function waitForReadyOrExit(child: ChildProcess, port: number): Promise<vo
     exitInfo = { code, signal }
   })
 
+  // Two-phase wait: TCP listening, THEN WebSocket-upgrade-able. The gateway
+  // binds its TCP port up to ~15s before its WebSocket handler is ready
+  // to accept connections (it does config + plugin init in between). If
+  // we mark "ready" on TCP-up and immediately kick off Studio, Studio's
+  // WebSocket connect can race ahead of the WS handler being installed
+  // and fail with "ws closed before connect: connect failed". Probing
+  // with a real WS upgrade handshake is the only signal that's actually
+  // monotonic with what Studio is about to attempt.
+  let tcpReady = false
   while (Date.now() < deadline) {
     if (exitInfo) {
       throw new Error(
         `MyClaw service exited before listening (code=${exitInfo.code}, signal=${exitInfo.signal})`
       )
     }
-    if (await isPortListening(port, '127.0.0.1', 500)) return
+    if (!tcpReady) {
+      if (await isPortListening(port, '127.0.0.1', 500)) tcpReady = true
+    } else {
+      if (await canHandshakeWebSocket(port, 1500)) return
+    }
     await new Promise((r) => setTimeout(r, READY_POLL_INTERVAL_MS))
   }
   // Time's up. Best-effort kill so the caller doesn't leak the child.
   if (child.exitCode === null) child.kill('SIGTERM')
   throw new Error(
-    `MyClaw service did not start listening on port ${port} within ${READY_TIMEOUT_MS / 1000}s`
+    `MyClaw service did not pass WebSocket-handshake check on port ${port} within ${READY_TIMEOUT_MS / 1000}s`
   )
+}
+
+/** Send a real WebSocket upgrade request and resolve true if the gateway
+ * responds with anything other than connection-refused / hang / read-error.
+ * Even a 401/403 from the gateway means its WS handler is wired up — that's
+ * what Studio's connect attempt is going to hit, so it's a more accurate
+ * "ready" signal than plain TCP listening. */
+function canHandshakeWebSocket(port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (result: boolean): void => {
+      if (settled) return
+      settled = true
+      sock.destroy()
+      resolve(result)
+    }
+    const sock = net.createConnection({ port, host: '127.0.0.1' })
+    sock.setTimeout(timeoutMs)
+    sock.once('error', () => finish(false))
+    sock.once('timeout', () => finish(false))
+    sock.once('connect', () => {
+      // 16-byte random key per RFC 6455. We don't validate the response key
+      // — just the fact that the server sent any HTTP/1.1 line back means
+      // it's past the bare-TCP-accept stage and the WS handler was reached.
+      const key = Buffer.alloc(16, 0).toString('base64')
+      sock.write(
+        [
+          `GET / HTTP/1.1`,
+          `Host: 127.0.0.1:${port}`,
+          `Upgrade: websocket`,
+          `Connection: Upgrade`,
+          `Sec-WebSocket-Key: ${key}`,
+          `Sec-WebSocket-Version: 13`,
+          ``,
+          ``
+        ].join('\r\n')
+      )
+    })
+    sock.once('data', (chunk) => finish(chunk.toString('utf8').startsWith('HTTP/1.')))
+  })
 }
