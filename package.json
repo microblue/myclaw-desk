@@ -1,6 +1,6 @@
 {
   "name": "myclaw-desk",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "description": "MyClaw.One Desktop — desktop client for myclaw.one OpenClaw deployments",
   "main": "./out/main/index.js",
   "author": "MyClaw.One",
@@ -18,7 +18,8 @@
     "prepack:node": "node scripts/download-node.mjs",
     "prepack:studio": "node scripts/build-studio.mjs",
     "prepack:openclaw": "node scripts/build-openclaw.mjs",
-    "prepack": "npm run prepack:node && npm run prepack:openclaw && npm run prepack:studio",
+    "prepack:strip-runtime": "node scripts/strip-runtime.mjs",
+    "prepack": "npm run prepack:node && npm run prepack:openclaw && npm run prepack:studio && npm run prepack:strip-runtime",
     "build:unpack": "npm run build && npm run prepack && electron-builder --dir",
     "build:win": "npm run build && npm run prepack && electron-builder --win",
     "build:mac": "electron-vite build && npm run prepack && electron-builder --mac",

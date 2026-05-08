@@ -5,10 +5,18 @@
 // Why a separate dir? studio/node_modules has both runtime and dev deps; we
 // want only runtime in the shipped app. Approach:
 //   1. Copy studio source files (no node_modules, no .next) to dist-studio/
-//   2. `npm ci --omit=dev` in dist-studio/ (production-only deps)
-//   3. `npm run build` in dist-studio/ (next build → .next/)
-//   4. Rebuild better-sqlite3 against the bundled Node 24 ABI so it loads on
-//      the user's machine without runtime recompile.
+//   2. `npm ci` in dist-studio/ (need devDeps to run `next build`)
+//   3. `npm run build` in dist-studio/ — with output:'standalone', Next
+//      emits a self-contained .next/standalone/ tree containing server.js,
+//      a traced node_modules/ subset, and a re-rooted .next/.
+//   4. Copy .next/static + public into the standalone tree (per Next docs;
+//      build-time output excludes them on purpose since CDNs typically
+//      serve those, but Electron has no CDN).
+//   5. Rebuild better-sqlite3 in the standalone's node_modules against the
+//      bundled Node 24 ABI so it loads on the user's machine without
+//      runtime recompile.
+//   6. Replace dist-studio/ contents with the standalone tree + rename
+//      node_modules → vendor_modules.
 //
 // Re-runs are clean: dist-studio/ is wiped first.
 
@@ -16,6 +24,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { rm, cp, mkdir, rename, readdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
@@ -40,8 +49,9 @@ if (!existsSync(BUNDLED_NODE)) {
 }
 
 const SOURCE_FILTER = (src) => {
-  // Skip these so cp doesn't copy a half-gigabyte of dev artifacts. node_modules
-  // gets re-installed in dist-studio/, and .next gets rebuilt by `next build`.
+  // Skip these so cp doesn't copy a half-gigabyte of dev artifacts.
+  // node_modules gets re-installed in dist-studio/, .next gets rebuilt by
+  // `next build`.
   const rel = src.slice(STUDIO_SRC.length)
   if (rel === '/node_modules' || rel.startsWith('/node_modules/')) return false
   if (rel === '/.next' || rel.startsWith('/.next/')) return false
@@ -53,7 +63,7 @@ const SOURCE_FILTER = (src) => {
 }
 
 console.log(`[build-studio] using bundled node: ${BUNDLED_NODE}`)
-console.log('[build-studio] (1/3) staging source → dist-studio/')
+console.log('[build-studio] (1/8) staging source → dist-studio/')
 await rm(DIST, { recursive: true, force: true })
 await mkdir(DIST, { recursive: true })
 await cp(STUDIO_SRC, DIST, {
@@ -62,10 +72,6 @@ await cp(STUDIO_SRC, DIST, {
   preserveTimestamps: true
 })
 
-// Tell better-sqlite3's prebuild-install to fetch the prebuilt for the bundled
-// Node ABI, not the host Node ABI. Without this we get a NODE_MODULE_VERSION
-// mismatch when the packaged app (Node 24) loads a binary built for the
-// install-time Node.
 const bundledNodeVersion = execFileSync(BUNDLED_NODE, ['-p', 'process.version'], {
   encoding: 'utf8'
 })
@@ -80,63 +86,88 @@ const npmEnv = {
   npm_config_target_platform: process.platform === 'win32' ? 'win32' : process.platform,
   npm_config_yes: 'true'
 }
-const runNpm = (...args) =>
-  execFileSync(BUNDLED_NODE, [BUNDLED_NPM_CLI, ...args], {
-    cwd: DIST,
-    stdio: 'inherit',
-    env: npmEnv
-  })
+const runNpmIn = (cwd, ...args) =>
+  execFileSync(BUNDLED_NODE, [BUNDLED_NPM_CLI, ...args], { cwd, stdio: 'inherit', env: npmEnv })
 
-// We need devDeps (postcss, tailwind, typescript, etc.) at build time even
-// though we don't ship them — Tailwind v4 + Next.js compile through them.
-// Order: full install → build → prune to ship-only.
-console.log('[build-studio] (2/4) installing all deps (npm ci)…')
-runNpm('ci', '--no-audit', '--no-fund')
+console.log('[build-studio] (2/8) installing all deps (npm ci)…')
+runNpmIn(DIST, 'ci', '--no-audit', '--no-fund')
 
-console.log('[build-studio] (3/4) running next build…')
-runNpm('run', 'build')
+console.log('[build-studio] (3/8) running next build (output: standalone)…')
+runNpmIn(DIST, 'run', 'build')
 
-console.log('[build-studio] (4/5) pruning dev deps…')
-runNpm('prune', '--omit=dev')
-
-console.log(
-  `[build-studio] (5/6) rebuilding native modules against bundled Node ${bundledNodeVersion}…`
-)
-runNpm('rebuild', 'better-sqlite3', '--update-binary')
-
-// Next.js Turbopack writes hashed-name packages under .next/node_modules/
-// (e.g. ws-24bb32dcb9424f99) and the runtime require()s them by that exact
-// name. Earlier we tried wiping the dir; turned out the runtime fails with
-// "Cannot find package 'ws-…'" on first request. They're typically
-// symlinks back into the outer node_modules — on Windows those dangle
-// after we rename below. Solution: dereference each into the outer
-// node_modules (real files, no symlinks), then rename the whole tree to
-// vendor_modules. NODE_PATH at studio spawn time includes vendor_modules
-// so the hashed lookups all resolve there.
-const NEXT_NM = join(DIST, '.next', 'node_modules')
-const NM = join(DIST, 'node_modules')
-if (existsSync(NEXT_NM)) {
-  console.log('[build-studio] (6/7) inlining .next/node_modules into top-level')
-  for (const name of await readdir(NEXT_NM)) {
-    const src = join(NEXT_NM, name)
-    const dst = join(NM, name)
-    await rm(dst, { recursive: true, force: true })
-    // dereference: replace symlinks with copies of their targets, so the
-    // moved dir doesn't contain dangling links once node_modules is renamed.
-    await cp(src, dst, { recursive: true, dereference: true })
-  }
-  await rm(NEXT_NM, { recursive: true, force: true })
+const STANDALONE = join(DIST, '.next', 'standalone')
+if (!existsSync(STANDALONE)) {
+  console.error(
+    `[build-studio] expected standalone tree at ${STANDALONE} — did studio/next.config.js opt out of output:'standalone'?`
+  )
+  process.exit(1)
 }
 
-// Strip dev cruft from the studio dep tree — see scripts/prune-bundle.mjs.
+console.log('[build-studio] (4/8) copying .next/static + public into standalone tree')
+const STATIC_SRC = join(DIST, '.next', 'static')
+const STATIC_DST = join(STANDALONE, '.next', 'static')
+const PUBLIC_SRC = join(DIST, 'public')
+const PUBLIC_DST = join(STANDALONE, 'public')
+if (existsSync(STATIC_SRC)) await cp(STATIC_SRC, STATIC_DST, { recursive: true, dereference: true })
+if (existsSync(PUBLIC_SRC)) await cp(PUBLIC_SRC, PUBLIC_DST, { recursive: true, dereference: true })
+
+// Native modules: rebuild better-sqlite3 inside standalone/node_modules so
+// the prebuilt binary matches our bundled Node ABI. Without this we'd ship
+// a binary built for the host's Node and the user gets a
+// NODE_MODULE_VERSION mismatch on first launch.
+const STANDALONE_NM = join(STANDALONE, 'node_modules')
+if (existsSync(join(STANDALONE_NM, 'better-sqlite3'))) {
+  console.log(
+    `[build-studio] (5/8) rebuilding better-sqlite3 against bundled Node ${bundledNodeVersion}…`
+  )
+  runNpmIn(STANDALONE, 'rebuild', 'better-sqlite3', '--update-binary')
+} else {
+  // Standalone trace can sometimes miss native modules — bail loudly so
+  // the user sees the gap at build time, not at runtime.
+  console.warn(
+    '[build-studio] WARN: better-sqlite3 not present in standalone/node_modules/. Studio runtime may fail.'
+  )
+}
+
+// Next 16's Turbopack writes hashed-name packages under
+// .next/server/node_modules/ (e.g. ws-24bb32dcb9424f99). With standalone,
+// these are inlined into the standalone server bundle and don't need
+// special handling — the trace already covered them.
+
+console.log('[build-studio] (6/8) flattening standalone → dist-studio root')
+// Move standalone tree out, wipe dist-studio, move it back in. Avoids
+// holding ~1GB of source + .next in memory or relying on rename across
+// filesystems.
+const STAGE = await (async () => {
+  const p = join(tmpdir(), `myclaw-studio-stage-${process.pid}`)
+  await rm(p, { recursive: true, force: true })
+  await mkdir(p, { recursive: true })
+  return p
+})()
+try {
+  for (const entry of await readdir(STANDALONE)) {
+    await rename(join(STANDALONE, entry), join(STAGE, entry))
+  }
+  await rm(DIST, { recursive: true, force: true })
+  await mkdir(DIST, { recursive: true })
+  for (const entry of await readdir(STAGE)) {
+    await rename(join(STAGE, entry), join(DIST, entry))
+  }
+} finally {
+  await rm(STAGE, { recursive: true, force: true })
+}
+
+// Strip dev cruft (.mts, .cts, .map, sourcemaps, etc.) from the now-flat
+// node_modules tree.
 console.log('[build-studio] (7/8) pruning dev cruft from node_modules')
+const NM = join(DIST, 'node_modules')
 execFileSync(BUNDLED_NODE, [join(ROOT, 'scripts', 'prune-bundle.mjs'), NM], { stdio: 'inherit' })
 
 // electron-builder's extraResources strips anything literally named
-// `node_modules` even with `filter: ['**/*']`, exactly like it does for the
-// bundled-Node tree. Rename to `vendor_modules` here; main/studio/process.ts
-// sets NODE_PATH to that dir at spawn time so `require('next')` still
-// resolves.
+// `node_modules` even with `filter: ['**/*']`, exactly like it does for
+// the bundled-Node tree. Rename to `vendor_modules` here;
+// main/studio/process.ts sets NODE_PATH to that dir at spawn time + makes
+// a node_modules→vendor_modules junction post-install for ESM resolution.
 console.log('[build-studio] (8/8) renaming node_modules → vendor_modules')
 const VM = join(DIST, 'vendor_modules')
 if (existsSync(NM)) {

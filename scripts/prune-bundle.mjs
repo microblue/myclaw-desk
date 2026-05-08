@@ -110,7 +110,23 @@ const removeDirs = new Set(
 // reads at runtime. Stripping them tripped v0.1.22's heartbeat with
 // "Missing workspace template: AGENTS.md". Lossy savings (~few MB) wasn't
 // worth the correctness regression.
-const removeExts = new Set(['.flow', '.coffee', '.lock', '.tsbuildinfo'])
+//
+// Newly added:
+//   .mts, .cts — TypeScript module variants that leaked through the
+//     existing .ts strip. Pure build-time, never imported at runtime.
+//   .bcmap     — pdf.js binary char maps. Studio/openclaw don't render
+//     PDFs in the desktop flow.
+//   .scss      — pre-compiled by Tailwind/PostCSS at build time.
+const removeExts = new Set([
+  '.flow',
+  '.coffee',
+  '.lock',
+  '.tsbuildinfo',
+  '.mts',
+  '.cts',
+  '.bcmap',
+  '.scss'
+])
 
 // Sourcemaps + .ts files. We strip both — at runtime Node only needs the
 // transpiled .js / .cjs. (.d.ts could in principle be useful for tooling

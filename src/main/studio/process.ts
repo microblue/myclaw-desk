@@ -23,6 +23,15 @@ const READY_TIMEOUT_MS = (() => {
   return 180_000
 })()
 
+// Studio entry point: in prod we ship Next's `output: 'standalone'` tree
+// where the server lives at <studioDir>/server.js; in dev the studio
+// source still has its custom server at <studioDir>/server/index.js.
+function resolveStudioEntry(studioDir: string): { entry: string; isStandalone: boolean } {
+  const standalone = join(studioDir, 'server.js')
+  if (existsSync(standalone)) return { entry: standalone, isStandalone: true }
+  return { entry: join(studioDir, 'server', 'index.js'), isStandalone: false }
+}
+
 function resolveStudioDir(): string {
   if (process.env.MYCLAW_DESK_STUDIO_DIR) return process.env.MYCLAW_DESK_STUDIO_DIR
   // Dev: studio/ is at the repo root, two levels up from out/main/index.js.
@@ -30,7 +39,9 @@ function resolveStudioDir(): string {
   // We can't import { is } here without circulars; check process.resourcesPath
   // and prefer it if it actually contains studio (i.e., we're packaged).
   const packaged = join(process.resourcesPath, 'studio')
-  if (existsSync(join(packaged, 'server', 'index.js'))) return packaged
+  if (existsSync(join(packaged, 'server.js')) || existsSync(join(packaged, 'server', 'index.js'))) {
+    return packaged
+  }
   return join(__dirname, '..', '..', 'studio')
 }
 
@@ -75,7 +86,7 @@ class StudioProcess extends EventEmitter {
       this.update({ phase: 'starting', message: 'Starting OpenClaw Studio…', error: undefined })
 
       const studioDir = resolveStudioDir()
-      const serverEntry = join(studioDir, 'server', 'index.js')
+      const { entry: serverEntry, isStandalone } = resolveStudioEntry(studioDir)
       if (!existsSync(serverEntry)) {
         throw new Error(`Studio server not found at ${serverEntry}`)
       }
@@ -88,16 +99,24 @@ class StudioProcess extends EventEmitter {
       const url = `http://127.0.0.1:${port}`
       const node = getPaths().nodeBin
 
-      // Prefer prod mode if a Next build exists; fall back to --dev otherwise.
-      // Lets us ship a prebuilt Studio in production and still iterate on raw
-      // checkouts in development without a manual `next build` step.
-      const hasProdBuild = existsSync(join(studioDir, '.next', 'BUILD_ID'))
-      const args = hasProdBuild ? ['server/index.js'] : ['server/index.js', '--dev']
+      // Two modes:
+      //   - Standalone (prod): Next emits server.js at <studioDir>/server.js
+      //     with output:'standalone'. It reads PORT + HOSTNAME from env;
+      //     no extra args needed.
+      //   - Custom server (dev): the studio source's server/index.js,
+      //     which still supports `--dev` for `next dev`.
+      const hasProdBuild =
+        isStandalone || existsSync(join(studioDir, '.next', 'BUILD_ID'))
+      const args = isStandalone
+        ? [serverEntry]
+        : hasProdBuild
+          ? ['server/index.js']
+          : ['server/index.js', '--dev']
 
       // Dev mode leaves `.next/dev/lock` behind on crash/force-quit, blocking
       // the next launch with "is another next dev running?". We're a single
       // Electron instance per user, so it's safe to clear it pre-spawn.
-      if (!hasProdBuild) {
+      if (!isStandalone && !hasProdBuild) {
         try {
           rmSync(join(studioDir, '.next', 'dev', 'lock'), { force: true })
         } catch {

@@ -333,9 +333,17 @@ class Bootstrapper extends EventEmitter {
     candidates.push(join(__dirname, '..', '..', 'studio'))
 
     for (const dir of candidates) {
-      if (existsSync(join(dir, 'server', 'index.js'))) {
-        const hasProdBuild = existsSync(join(dir, '.next', 'BUILD_ID'))
-        this.markCheck('studio', 'ok', hasProdBuild ? 'prod build present' : 'dev mode (next dev)')
+      // Prefer Next standalone (server.js at studio root); fall back to
+      // dev's custom server (server/index.js).
+      const hasStandalone = existsSync(join(dir, 'server.js'))
+      const hasDevServer = existsSync(join(dir, 'server', 'index.js'))
+      if (hasStandalone || hasDevServer) {
+        const hasProdBuild = hasStandalone || existsSync(join(dir, '.next', 'BUILD_ID'))
+        this.markCheck(
+          'studio',
+          'ok',
+          hasStandalone ? 'standalone build' : hasProdBuild ? 'prod build present' : 'dev mode (next dev)'
+        )
         return
       }
     }

@@ -38,14 +38,16 @@ const nodeRoot = join(resourcesDir, 'node', target)
 
 const required = [
   platform === 'win32' ? join(nodeRoot, 'node.exe') : join(nodeRoot, 'bin', 'node'),
-  platform === 'win32'
-    ? join(nodeRoot, 'vendor_modules', 'npm', 'bin', 'npm-cli.js')
-    : join(nodeRoot, 'lib', 'vendor_modules', 'npm', 'bin', 'npm-cli.js'),
-  join(resourcesDir, 'studio', 'server', 'index.js'),
+  // npm is intentionally NOT in this list — strip-runtime.mjs removes it
+  // post-build because openclaw + studio are now pre-installed and the
+  // user's machine never invokes npm at runtime.
+  // Studio's standalone entry. Next emits this at <studioDir>/server.js
+  // when next.config.js sets output:'standalone'. With this present we
+  // know build-studio.mjs's flatten step also worked.
+  join(resourcesDir, 'studio', 'server.js'),
   // Studio's deps must survive electron-builder's extraResources stripping
   // — see scripts/build-studio.mjs for the node_modules → vendor_modules
-  // rename. Without `next` reachable, server/index.js crashes on its first
-  // require() call (caught by 04-real-bootstrap, would otherwise ship).
+  // rename. Without `next` reachable, server.js crashes on first require.
   join(resourcesDir, 'studio', 'vendor_modules', 'next', 'package.json'),
   // Bundled openclaw — same node_modules → vendor_modules rename so the
   // tree survives extraResources packaging. paths.ts looks here first
