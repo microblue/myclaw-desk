@@ -171,16 +171,19 @@ if (existsSync(join(STANDALONE_NM, 'better-sqlite3'))) {
 // special handling — the trace already covered them.
 
 console.log('[build-studio] (6/8) flattening standalone → dist-studio root')
-// Move standalone tree out, wipe dist-studio, move it back in. Stage on
-// the *same filesystem* as DIST (workspace) so rename() doesn't EXDEV on
-// Windows, where tmpdir() is C:\ but the workspace is D:\.
+// COPY (not rename) standalone → stage with dereference: true. Next 16
+// emits hashed symlinks like .next/node_modules/better-sqlite3-90e2652d…
+// pointing into the standalone tree. rename preserves those links as-is,
+// but the moment we rm(DIST) and recreate it the symlink targets become
+// invalid — and Windows 7-Zip's archive scan refuses to package
+// dangling symlinks (Linux 7za tolerates them, which is why this only
+// surfaced on the win-x64 build). dereference turns every symlink into
+// a real file copy, so the post-move tree is self-contained.
 const STAGE = join(ROOT, '.dist-studio-stage')
 await rm(STAGE, { recursive: true, force: true })
 await mkdir(STAGE, { recursive: true })
 try {
-  for (const entry of await readdir(STANDALONE)) {
-    await rename(join(STANDALONE, entry), join(STAGE, entry))
-  }
+  await cp(STANDALONE, STAGE, { recursive: true, dereference: true })
   await rm(DIST, { recursive: true, force: true })
   await mkdir(DIST, { recursive: true })
   for (const entry of await readdir(STAGE)) {

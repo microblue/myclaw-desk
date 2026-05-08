@@ -22,8 +22,19 @@ if (!Number.isInteger(port) || port <= 0) {
 }
 
 const server = net.createServer((socket) => {
-  // Drain any incoming bytes so curl/handshake probes don't reset.
-  socket.on('data', () => {})
+  // On any incoming bytes, send a minimal HTTP/1.1 response. The desktop
+  // bootstrap's two-phase ready check (TCP listening, THEN a real WS
+  // upgrade handshake) needs to see "HTTP/1." come back from the gateway
+  // before it'll mark ready — without this the fake gateway looks alive
+  // (TCP up) but never speaks, so canHandshakeWebSocket() polls forever.
+  // Real openclaw responds with HTTP/1.1 101 Switching Protocols (or 401
+  // missing-auth) once its WS handler is wired up.
+  let responded = false
+  socket.on('data', () => {
+    if (responded) return
+    responded = true
+    socket.write('HTTP/1.1 101 Switching Protocols\r\n\r\n')
+  })
   socket.on('error', () => {})
 })
 
