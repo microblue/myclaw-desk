@@ -1,6 +1,7 @@
 import { spawn } from 'child_process'
+import { randomBytes } from 'crypto'
 import { existsSync, readFileSync, symlinkSync } from 'fs'
-import { mkdir, stat, writeFile } from 'fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'fs/promises'
 import { EventEmitter } from 'events'
 import { dirname, join } from 'path'
 import { getPaths, resetPathsCache } from './paths'
@@ -174,11 +175,16 @@ class Bootstrapper extends EventEmitter {
         ensureVendorModulesSymlink(fresh.bundledOpenclawDir)
       }
 
-      // Seed a default openclaw.json on first run so the gateway uses our
-      // bundled OpenRouter key (rather than its hardcoded openai/gpt-5.5
-      // default, which fails with "No API key for openai" since we only
-      // inject OPENROUTER_API_KEY). No-op if the user already has a config.
-      await ensureDefaultConfig(fresh.stateDir)
+      // Seed a default openclaw.json on first run so:
+      //   1. the gateway uses our bundled OpenRouter key (rather than its
+      //      hardcoded openai/gpt-5.5 default, which fails with "No API
+      //      key for openai" since we only inject OPENROUTER_API_KEY).
+      //   2. Studio finds gateway.auth.token + gateway.port to connect.
+      //      Without this Studio shows "no access token for openclaw
+      //      connection" — its loadLocalGatewayDefaults() reads exactly
+      //      these fields out of the same openclaw.json.
+      // No-op if the user already has a config.
+      const gatewayToken = await ensureDefaultConfig(fresh.stateDir, fresh.gatewayPort)
 
       // Step 4: spawn managed gateway and wait for the port to listen.
       this.update({
@@ -187,13 +193,19 @@ class Bootstrapper extends EventEmitter {
         message: 'Starting MyClaw service…'
       })
       this.markCheck('gateway', 'active', `binding :${fresh.gatewayPort}…`)
-      // Hand the bundled OpenRouter key to the gateway as an env var. Only
-      // applies when no user-set key was already in process.env — we don't
-      // want the bundled fallback to clobber an env var the user explicitly
-      // configured. openclaw auto-discovers from env at startup.
+      // Hand the bundled OpenRouter key + the gateway auth token to the
+      // gateway child as env vars. OPENROUTER_API_KEY only applies when no
+      // user-set key was already in process.env — we don't want the
+      // bundled fallback to clobber an env var the user explicitly
+      // configured. OPENCLAW_GATEWAY_TOKEN matches what we just wrote into
+      // openclaw.json so Studio's read of that file produces a token that
+      // the gateway will actually accept.
       const extraEnv: Record<string, string> = {}
       if (BUNDLED_OPENROUTER_KEY && !process.env.OPENROUTER_API_KEY) {
         extraEnv.OPENROUTER_API_KEY = BUNDLED_OPENROUTER_KEY
+      }
+      if (gatewayToken) {
+        extraEnv.OPENCLAW_GATEWAY_TOKEN = gatewayToken
       }
       this.managedGateway = await startManagedGateway({
         openclaw: fresh.openclaw,
@@ -497,34 +509,94 @@ function ensureVendorModulesSymlink(dir: string): void {
 const DEFAULT_MODEL_PRIMARY = 'openrouter/anthropic/claude-haiku-4.5'
 
 /**
- * Write a minimal openclaw.json into the state dir on first run so the
- * gateway points at our bundled-key provider out of the box. No-op if a
- * config already exists — we never overwrite user customization.
+ * Write/upgrade openclaw.json so Studio + the gateway agree on auth.
+ * Returns the token that should be passed to the gateway via env.
+ *
+ * - First run (no file): write model defaults + gateway port + a freshly
+ *   generated 32-byte random token.
+ * - Existing file with no gateway.auth.token: add one (don't touch user's
+ *   model settings or anything else they configured).
+ * - Existing file already has a token: leave it; just return its value so
+ *   we pass the matching env var to the gateway child.
  */
-async function ensureDefaultConfig(stateDir: string): Promise<void> {
+async function ensureDefaultConfig(
+  stateDir: string,
+  gatewayPort: number
+): Promise<string | undefined> {
   const configPath = join(stateDir, 'openclaw.json')
-  if (await fileExists(configPath)) return
   await mkdir(stateDir, { recursive: true })
-  const seed = {
-    agents: {
-      defaults: {
-        model: { primary: DEFAULT_MODEL_PRIMARY }
+
+  let cfg: Record<string, unknown> = {}
+  if (await fileExists(configPath)) {
+    try {
+      cfg = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>
+    } catch {
+      // Corrupt file — fall through and overwrite with a fresh seed rather
+      // than leaving the user wedged on a malformed config.
+      cfg = {}
+    }
+  }
+
+  let mutated = false
+  const isObj = (v: unknown): v is Record<string, unknown> =>
+    Boolean(v && typeof v === 'object' && !Array.isArray(v))
+
+  // agents.defaults.model.primary
+  if (!isObj(cfg.agents)) {
+    cfg.agents = { defaults: { model: { primary: DEFAULT_MODEL_PRIMARY } } }
+    mutated = true
+  } else {
+    const agents = cfg.agents as Record<string, unknown>
+    if (!isObj(agents.defaults)) {
+      agents.defaults = { model: { primary: DEFAULT_MODEL_PRIMARY } }
+      mutated = true
+    } else {
+      const defaults = agents.defaults as Record<string, unknown>
+      if (!isObj(defaults.model)) {
+        defaults.model = { primary: DEFAULT_MODEL_PRIMARY }
+        mutated = true
       }
     }
   }
-  try {
-    await writeFile(configPath, JSON.stringify(seed, null, 2) + '\n', 'utf8')
-    installLogger.log({
-      source: 'bootstrap',
-      text: `Seeded default config at ${configPath} (model: ${DEFAULT_MODEL_PRIMARY})`
-    })
-  } catch (err) {
-    installLogger.log({
-      source: 'bootstrap',
-      level: 'warn',
-      text: `Failed to seed ${configPath}: ${err instanceof Error ? err.message : String(err)}`
-    })
+
+  // gateway.{port, auth.token}
+  if (!isObj(cfg.gateway)) {
+    cfg.gateway = {}
+    mutated = true
   }
+  const gw = cfg.gateway as Record<string, unknown>
+  if (gw.port !== gatewayPort) {
+    gw.port = gatewayPort
+    mutated = true
+  }
+  if (!isObj(gw.auth)) {
+    gw.auth = {}
+    mutated = true
+  }
+  const auth = gw.auth as Record<string, unknown>
+  if (typeof auth.token !== 'string' || !auth.token.trim()) {
+    auth.token = randomBytes(32).toString('hex')
+    mutated = true
+  }
+
+  if (mutated) {
+    try {
+      await writeFile(configPath, JSON.stringify(cfg, null, 2) + '\n', 'utf8')
+      installLogger.log({
+        source: 'bootstrap',
+        text: `Seeded openclaw.json (model + gateway.auth.token) at ${configPath}`
+      })
+    } catch (err) {
+      installLogger.log({
+        source: 'bootstrap',
+        level: 'warn',
+        text: `Failed to write ${configPath}: ${err instanceof Error ? err.message : String(err)}`
+      })
+      return undefined
+    }
+  }
+
+  return typeof auth.token === 'string' ? auth.token : undefined
 }
 
 export const bootstrapper = new Bootstrapper()

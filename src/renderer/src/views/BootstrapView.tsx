@@ -160,6 +160,8 @@ function opt(s: string | undefined): string {
   return s ? `(${s})` : ''
 }
 
+declare const __APP_VERSION__: string
+
 function BrandHeader(): React.JSX.Element {
   return (
     <div className="flex flex-col items-center text-center">
@@ -171,7 +173,12 @@ function BrandHeader(): React.JSX.Element {
           </span>
         </div>
       </div>
-      <h1 className="text-3xl font-bold tracking-tight">MyClaw.One Desktop</h1>
+      <h1 className="text-3xl font-bold tracking-tight">
+        MyClaw.One Desktop{' '}
+        <span className="align-middle text-sm font-medium text-base-content/50">
+          v{__APP_VERSION__}
+        </span>
+      </h1>
       <p className="text-xs uppercase tracking-widest text-base-content/50">
         setting things up for you
       </p>

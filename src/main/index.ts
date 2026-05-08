@@ -19,6 +19,9 @@ if (process.env.MYCLAW_DESK_USERDATA) {
   app.setPath('userData', process.env.MYCLAW_DESK_USERDATA)
 }
 
+// Build-time injected from package.json via electron.vite.config.ts:define.
+declare const __APP_VERSION__: string
+
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
@@ -27,6 +30,7 @@ function createWindow(): void {
     height: 820,
     show: false,
     autoHideMenuBar: true,
+    title: `MyClaw.One Desktop  v${__APP_VERSION__}`,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
