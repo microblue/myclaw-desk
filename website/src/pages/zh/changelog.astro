@@ -1,0 +1,15 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import ChangelogContent from '@/components/ChangelogContent.astro';
+import { setLanguage } from '@/lib/i18n';
+
+setLanguage('zh');
+---
+<BaseLayout
+  title="MyClaw 桌面版 — 版本更新"
+  description="MyClaw.One 桌面应用每个版本的改动清单。"
+  lang="zh"
+  canonicalPath="/zh/changelog/"
+>
+  <ChangelogContent lang="zh" />
+</BaseLayout>

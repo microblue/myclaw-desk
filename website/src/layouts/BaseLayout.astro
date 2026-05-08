@@ -1,0 +1,65 @@
+---
+import '@/styles/global.css';
+
+interface Props {
+  title: string;
+  description: string;
+  lang: 'en' | 'zh';
+  canonicalPath: string;
+}
+
+const { title, description, lang, canonicalPath } = Astro.props;
+const siteUrl = 'https://desktop.myclaw.one';
+const canonical = `${siteUrl}${canonicalPath}`;
+
+const labels = {
+  en: {
+    backToMyClaw: 'myclaw.one',
+    switchLang: '中文',
+    switchLangPath: '/zh/',
+  },
+  zh: {
+    backToMyClaw: 'myclaw.one',
+    switchLang: 'English',
+    switchLangPath: '/',
+  },
+} as const;
+
+const l = labels[lang];
+---
+<!doctype html>
+<html lang={lang === 'zh' ? 'zh-CN' : 'en'} class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+  </head>
+  <body class="bg-background text-foreground antialiased">
+    <nav class="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        <a href="https://myclaw.one" class="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+          ← {l.backToMyClaw}
+        </a>
+        <a href={l.switchLangPath} class="text-sm text-muted-foreground transition-colors hover:text-foreground">
+          {l.switchLang}
+        </a>
+      </div>
+    </nav>
+    <main>
+      <slot />
+    </main>
+    <footer class="border-t border-border py-8 text-center text-sm text-muted-foreground">
+      <p>© 2026 MyClaw.One · Desktop</p>
+    </footer>
+  </body>
+</html>

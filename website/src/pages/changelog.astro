@@ -1,0 +1,15 @@
+---
+import BaseLayout from '@/layouts/BaseLayout.astro';
+import ChangelogContent from '@/components/ChangelogContent.astro';
+import { setLanguage } from '@/lib/i18n';
+
+setLanguage('en');
+---
+<BaseLayout
+  title="MyClaw Desktop — Release Notes"
+  description="Version history and release notes for the MyClaw.One desktop app."
+  lang="en"
+  canonicalPath="/changelog/"
+>
+  <ChangelogContent lang="en" />
+</BaseLayout>

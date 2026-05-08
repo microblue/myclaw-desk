@@ -1,0 +1,83 @@
+---
+import { t } from '@/lib/i18n';
+import DESKTOP_RELEASES from '@/data/desktopReleases';
+
+// Locale-aware date formatter — pass the Astro page's lang.
+interface Props {
+    lang: 'en' | 'zh';
+}
+
+const { lang } = Astro.props;
+
+const dateFormatter = new Intl.DateTimeFormat(
+    lang === 'zh' ? 'zh-CN' : 'en-US',
+    { year: 'numeric', month: 'long', day: 'numeric' },
+);
+
+// Helper: render a single change text with inline `code` segments
+// (the source data embeds backticks à la Markdown).  Replace
+// `x` → <code>x</code>; keep everything else as plain text.
+function renderInlineCode(text: string): string {
+    return text.replace(
+        /`([^`]+)`/g,
+        (_m, code) =>
+            `<code class="rounded bg-white/10 px-1.5 py-0.5 text-[0.85em] text-foreground">${code}</code>`,
+    );
+}
+---
+<section class="relative px-6 pt-24 pb-32">
+    <div class="relative mx-auto max-w-3xl">
+        <div class="mb-16 text-center">
+            <h1 class="font-display mb-4 bg-gradient-to-b from-foreground to-muted-foreground bg-clip-text text-4xl font-bold text-transparent md:text-5xl">
+                {t('go.faqHeading')}
+            </h1>
+            <p class="mx-auto max-w-xl text-lg text-muted-foreground">
+                {lang === 'zh' ? '每个版本的改动清单。' : 'Release notes for every version.'}
+            </p>
+        </div>
+
+        <div class="space-y-12">
+            {DESKTOP_RELEASES.map((release) => (
+                <article class="relative">
+                    <header class="mb-5 flex items-baseline justify-between gap-4 border-b border-border pb-3">
+                        <h2 class="font-display text-2xl font-bold text-foreground">
+                            v{release.version}
+                        </h2>
+                        <time
+                            datetime={release.date}
+                            class="text-sm text-muted-foreground"
+                        >
+                            {dateFormatter.format(new Date(release.date))}
+                        </time>
+                    </header>
+
+                    <ul class="space-y-3">
+                        {release.changes.map((change) => (
+                            <li class="flex gap-3">
+                                <span class:list={[
+                                    'mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+                                    change.kind === 'highlight' ? 'bg-brand' : 'bg-muted-foreground/40',
+                                ]}></span>
+                                <span
+                                    class="leading-relaxed text-muted-foreground"
+                                    set:html={renderInlineCode(change.text)}
+                                />
+                            </li>
+                        ))}
+                    </ul>
+                </article>
+            ))}
+        </div>
+
+        <div class="mt-16 border-t border-border pt-8 text-center">
+            <a
+                href="https://github.com/microblue/myclaw-desktop-releases/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-sm text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground"
+            >
+                {lang === 'zh' ? '在 GitHub 查看全部 release' : 'View all releases on GitHub'} →
+            </a>
+        </div>
+    </div>
+</section>
