@@ -604,7 +604,69 @@ async function ensureDefaultConfig(
     }
   }
 
-  return typeof auth.token === 'string' ? auth.token : undefined
+  const token = typeof auth.token === 'string' ? auth.token : undefined
+
+  // Also seed Studio's own settings.json so its frontend lands on the chat
+  // panel directly instead of the GatewayConnectScreen on first launch.
+  // Studio's app/page.tsx renders the connect screen whenever its initial
+  // gateway connection attempt didn't succeed. Without this file Studio
+  // falls back to reading openclaw.json — which works *most* of the time
+  // but has subtle failure modes (silent JSON parse error swallowed by a
+  // try/catch, race with the gateway WS handler, normalization stripping
+  // the explicit URL we want). Writing settings.json directly removes
+  // every link in that fallback chain.
+  if (token) {
+    await writeStudioSettings(stateDir, gatewayPort, token)
+  }
+
+  return token
+}
+
+/** Studio reads <stateDir>/openclaw-studio/settings.json on every page
+ * load (server-side via studio-settings.js → loadStudioSettings()).
+ * Writing it explicitly with the gateway URL + token means Studio's
+ * frontend gets a complete connection on first render, no fallback,
+ * no GatewayConnectScreen — straight to the chat panel.
+ *
+ * No-op if the file already exists (user may have changed Studio
+ * settings since last launch and we shouldn't clobber them).
+ */
+async function writeStudioSettings(
+  stateDir: string,
+  gatewayPort: number,
+  token: string
+): Promise<void> {
+  const dir = join(stateDir, 'openclaw-studio')
+  const file = join(dir, 'settings.json')
+  if (await fileExists(file)) return
+  try {
+    await mkdir(dir, { recursive: true })
+    const settings = {
+      version: 1,
+      gateway: {
+        // Use 127.0.0.1 explicitly: Studio normalizes loopback addresses
+        // back to "localhost" anyway (settings.ts:normalizeGatewayUrl),
+        // but writing the IP form first avoids any ambiguity if the
+        // normalizer ever drops that rewrite.
+        url: `ws://127.0.0.1:${gatewayPort}`,
+        token
+      },
+      gatewayAutoStart: true,
+      focused: {},
+      avatars: {}
+    }
+    await writeFile(file, JSON.stringify(settings, null, 2) + '\n', 'utf8')
+    installLogger.log({
+      source: 'bootstrap',
+      text: `Seeded studio settings at ${file}`
+    })
+  } catch (err) {
+    installLogger.log({
+      source: 'bootstrap',
+      level: 'warn',
+      text: `Failed to write ${file}: ${err instanceof Error ? err.message : String(err)}`
+    })
+  }
 }
 
 export const bootstrapper = new Bootstrapper()
