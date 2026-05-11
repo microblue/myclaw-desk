@@ -9,18 +9,19 @@ import type { StudioState } from '../../shared/studio'
 
 // First-run on Windows can take a while: Next.js cold-compiles on the
 // first request, Defender real-time-scans every node_modules file the
-// server touches, and better-sqlite3 may init the SQLite db. 60s was not
-// enough on at least one user's machine — the splash kept spinning past
-// the test timeout. 3 min covers slow paths without making genuinely
-// stuck failure modes intolerable. Overridable via env so test sandboxes
-// can fail fast without inheriting the prod-grade timeout.
+// server touches, and better-sqlite3 may init the SQLite db. The same
+// machines that need a 5-minute gateway timeout (see daemon.ts) need
+// generous headroom here too — Studio runs *after* the gateway is up,
+// so Defender's cache is warmer by then, but the standalone server's
+// first request still hits ~2k cold files. 5 min covers it.
+// Overridable via env so test sandboxes can fail fast.
 const READY_TIMEOUT_MS = (() => {
   const env = process.env.MYCLAW_DESK_STUDIO_TIMEOUT_MS
   if (env) {
     const n = Number.parseInt(env, 10)
     if (Number.isFinite(n) && n > 0) return n
   }
-  return 180_000
+  return 300_000
 })()
 
 // Studio entry point: in prod we ship Next's `output: 'standalone'` tree

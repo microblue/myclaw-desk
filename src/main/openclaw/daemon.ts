@@ -3,13 +3,23 @@ import * as net from 'net'
 import { dirname } from 'path'
 import type { OpenclawCommand } from './paths'
 
-// 30s was not enough for first-run on Windows: openclaw generates and
-// writes an auth token on first launch, and Windows Defender's real-time
-// scan of the freshly-installed 556-package node_modules tree pushes
-// that single write past 25s. Subsequent launches are fast because the
-// token is already in config. 120s gives generous headroom for the slow
-// path without making the failure mode unbearable.
-const READY_TIMEOUT_MS = 120_000
+// First-run on Windows is *very* slow because Defender's real-time scan
+// touches every file openclaw reads (~19k under vendor_modules). One
+// real-user report at v0.1.28 took 67s between spawn and gateway's first
+// stdout line ("loading configuration…"), and by 126s after spawn the
+// WS handler still wasn't up — well past our previous 120s timeout. The
+// machine was 4 cores / 5 GB RAM / Defender active, which we should
+// treat as a supported config. 5 minutes covers the slow path with
+// headroom; subsequent launches are sub-30s once Defender's cache is
+// warm. Override via MYCLAW_DESK_GATEWAY_TIMEOUT_MS for tests.
+const READY_TIMEOUT_MS = (() => {
+  const env = process.env.MYCLAW_DESK_GATEWAY_TIMEOUT_MS
+  if (env) {
+    const n = Number.parseInt(env, 10)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return 300_000
+})()
 const READY_POLL_INTERVAL_MS = 250
 
 /** Probe whether a TCP listener is up at host:port. Used both to detect an
@@ -157,8 +167,13 @@ async function waitForReadyOrExit(child: ChildProcess, port: number): Promise<vo
   }
   // Time's up. Best-effort kill so the caller doesn't leak the child.
   if (child.exitCode === null) child.kill('SIGTERM')
+  const tcpHint = tcpReady
+    ? 'TCP port was listening but the WebSocket handler did not finish initializing'
+    : 'TCP port was never reached'
   throw new Error(
-    `MyClaw service did not pass WebSocket-handshake check on port ${port} within ${READY_TIMEOUT_MS / 1000}s`
+    `MyClaw service did not become ready on port ${port} within ${READY_TIMEOUT_MS / 1000}s ` +
+      `(${tcpHint}). On Windows this is usually antivirus real-time scanning on first launch — ` +
+      `relaunching the app typically succeeds the second time once the file cache is warm.`
   )
 }
 
