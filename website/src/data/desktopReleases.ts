@@ -19,6 +19,16 @@ export interface DesktopRelease {
 
 const DESKTOP_RELEASES: DesktopRelease[] = [
     {
+        version: '0.1.30',
+        date: '2026-05-11',
+        changes: [
+            {
+                kind: 'fix',
+                text: 'Real fix for the "MyClaw service did not become ready" timeout. v0.1.29\'s 300 s cap turned out to be plenty — the gateway was actually finishing its boot at the 263 s mark — but our readiness probe was silently mis-classifying the working gateway as not-ready. The probe sent a WebSocket upgrade request without an auth header; the real gateway responds by closing the TCP connection with no HTTP status line (it logs this as code=1006), so the probe\'s `data` event never fired and we kept retrying until the cap. v0.1.30 reads the gateway\'s own "http server listening" stdout line as the authoritative ready signal — the gateway saying "I\'m ready" is more reliable than us guessing from outside. WS handshake stays as a fallback for the e2e fake-gateway. Users who hit the v0.1.28 / v0.1.29 timeout should now bootstrap successfully on the first try.',
+            },
+        ],
+    },
+    {
         version: '0.1.29',
         date: '2026-05-11',
         changes: [
