@@ -19,6 +19,16 @@ export interface DesktopRelease {
 
 const DESKTOP_RELEASES: DesktopRelease[] = [
     {
+        version: '0.1.29',
+        date: '2026-05-11',
+        changes: [
+            {
+                kind: 'fix',
+                text: 'Bumped first-launch timeouts so slower Windows machines no longer fail bootstrap. One real-user report (4 cores, 5 GB RAM, Defender real-time scan active) hit the previous 120 s gateway timeout — Node + openclaw CLI + plugin discovery took 67 s before the gateway even printed its first stdout line, and by the 120 s cap the WebSocket handler still wasn\'t up. Gateway timeout now 5 min (was 2 min), Studio timeout now 5 min (was 3 min). Subsequent launches stay sub-30 s once Defender\'s file cache is warm; we just give the first one room to breathe. The timeout error message now hints at antivirus + tells the user to relaunch.',
+            },
+        ],
+    },
+    {
         version: '0.1.28',
         date: '2026-05-09',
         changes: [
