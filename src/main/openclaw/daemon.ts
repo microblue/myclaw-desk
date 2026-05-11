@@ -105,9 +105,28 @@ export async function startManagedGateway(
   // event loop alive when the user closes the window.
   child.unref()
 
+  // Watch gateway stdout for the line it prints when its HTTP+WS server is
+  // fully bound and accepting traffic. This is the authoritative ready
+  // signal — vastly more reliable than poking the socket from outside,
+  // which is what bit us in the v0.1.29 user report:
+  //
+  //   [gateway] http server listening (6 plugins: …; 203.1s)
+  //
+  // Once that line appears the gateway IS ready, but our external probe
+  // was still spinning because the gateway closes unauthenticated
+  // upgrade requests without writing back a status line (code=1006 in
+  // its own logs), so `data` never fired and we kept retrying until the
+  // 300s deadline. The stdout marker doesn't depend on auth or probe
+  // shape, so it works against every supported openclaw version.
+  let gatewayLogReady = false
+  const READY_LINE = /http\s+server\s+listening/i
   const onData = (buf: Buffer): void => {
+    const text = buf.toString('utf8')
+    if (!gatewayLogReady && READY_LINE.test(text)) {
+      gatewayLogReady = true
+    }
     if (!opts.onLog) return
-    const tail = buf.toString('utf8').split(/\r?\n/).filter(Boolean).pop()
+    const tail = text.split(/\r?\n/).filter(Boolean).pop()
     if (tail) opts.onLog(tail)
   }
   child.stdout?.on('data', onData)
@@ -132,25 +151,33 @@ export async function startManagedGateway(
     }
   }
 
-  await waitForReadyOrExit(child, opts.port)
+  await waitForReadyOrExit(child, opts.port, () => gatewayLogReady)
   return handle
 }
 
-async function waitForReadyOrExit(child: ChildProcess, port: number): Promise<void> {
+async function waitForReadyOrExit(
+  child: ChildProcess,
+  port: number,
+  isLogReady: () => boolean
+): Promise<void> {
   const deadline = Date.now() + READY_TIMEOUT_MS
   let exitInfo: { code: number | null; signal: NodeJS.Signals | null } | undefined
   child.once('exit', (code, signal) => {
     exitInfo = { code, signal }
   })
 
-  // Two-phase wait: TCP listening, THEN WebSocket-upgrade-able. The gateway
-  // binds its TCP port up to ~15s before its WebSocket handler is ready
-  // to accept connections (it does config + plugin init in between). If
-  // we mark "ready" on TCP-up and immediately kick off Studio, Studio's
-  // WebSocket connect can race ahead of the WS handler being installed
-  // and fail with "ws closed before connect: connect failed". Probing
-  // with a real WS upgrade handshake is the only signal that's actually
-  // monotonic with what Studio is about to attempt.
+  // Ready detection, in preference order:
+  //   1. Gateway prints its own "http server listening" line — definitive
+  //      signal, no probing needed. Works for every real openclaw version.
+  //   2. WS upgrade handshake succeeds against the port — fallback for the
+  //      fake-openclaw e2e test bin which doesn't print log lines but does
+  //      respond with HTTP/1.1 101 on incoming bytes.
+  //   3. Plain TCP listening — informational only, used to gate when (2)
+  //      becomes worth attempting.
+  // We don't rely solely on (2) anymore: it returned false negatives
+  // against real openclaw, which closes unauthenticated WS upgrades with
+  // code=1006 (no HTTP response body), so the probe's `data` event never
+  // fires and we'd hit deadline despite the gateway being fully ready.
   let tcpReady = false
   while (Date.now() < deadline) {
     if (exitInfo) {
@@ -158,6 +185,7 @@ async function waitForReadyOrExit(child: ChildProcess, port: number): Promise<vo
         `MyClaw service exited before listening (code=${exitInfo.code}, signal=${exitInfo.signal})`
       )
     }
+    if (isLogReady()) return
     if (!tcpReady) {
       if (await isPortListening(port, '127.0.0.1', 500)) tcpReady = true
     } else {
