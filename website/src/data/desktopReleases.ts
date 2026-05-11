@@ -19,6 +19,16 @@ export interface DesktopRelease {
 
 const DESKTOP_RELEASES: DesktopRelease[] = [
     {
+        version: '0.1.28',
+        date: '2026-05-09',
+        changes: [
+            {
+                kind: 'fix',
+                text: 'First launch on Windows now lands directly on the Studio chat panel instead of the gateway connect screen. The previous build relied on Studio falling back to read ~/.openclaw/openclaw.json for its gateway URL + token, which had silent failure modes (try/catch swallowing parse errors, loopback normalization rewriting 127.0.0.1 to localhost while Chromium on Windows sometimes prefers ::1). Bootstrap now writes ~/.openclaw/openclaw-studio/settings.json directly with the explicit gateway URL + auth token, so Studio\'s frontend connects on first render with no fallback chain involved.',
+            },
+        ],
+    },
+    {
         version: '0.1.27',
         date: '2026-05-08',
         changes: [
